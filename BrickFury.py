@@ -42,8 +42,6 @@ def swear_filter(serverid, message, userid):
     #log(bypass)
     if bypass == 1:
         return 0;
-    elif bypass == None:
-        return 0;
     else:
         offenceTime = 0
         msg = message.lower()
