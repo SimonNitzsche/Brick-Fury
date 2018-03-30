@@ -55,7 +55,7 @@ def swear_filter(serverid, message, userid):
         return offenceTime;
 
 async def permission_response(message):
-    await client.send_message(message.channel, 'Sorry ?, you do not have permission to run that command!', message.author.mention)
+    await client.send_message(message.channel, 'Sorry {}, you do not have permission to run that command!'.format(message.author.mention))
     return;
 
 def json_reader(data_type): # JSON READ / WRITE
