@@ -16,7 +16,7 @@ fury.execute('''CREATE TABLE IF NOT EXISTS swearexception
 
 
 con = sqlite3.connect(':memory:')
-con.isolation_level = None
+#con.isolation_level = None
 mem = con.cursor()
 
 mem.execute('''CREATE TABLE IF NOT EXISTS bypass
@@ -42,20 +42,22 @@ def swear_filter(serverid, message, userid):
     #log(bypass)
     if bypass == 1:
         return 0;
+    elif bypass == None:
+        return 0;
     else:
         offenceTime = 0
         msg = message.lower()
         #msg = ''.join(e for e in message.lower() if e.isalnum())
-        for exceptions in fury.execute("SELECT * FROM swearexception WHERE serverid = '{}'".format(serverid)):
+        for exceptions in fury.execute("SELECT * FROM swearexception WHERE serverid = '?'", serverid):
                 exception = exceptions[1]
                 offenceTime -= msg.count('{}'.format(exception))
-        for row in fury.execute("SELECT * FROM swear WHERE serverid = '{}'".format(serverid)):
+        for row in fury.execute("SELECT * FROM swear WHERE serverid = '?'", serverid):
             phrase = row[1]
             offenceTime += msg.count('{}'.format(phrase))
         return offenceTime;
 
 async def permission_response(message):
-    await client.send_message(message.channel, 'Sorry {}, you do not have permission to run that command!'.format(message.author.mention))
+    await client.send_message(message.channel, 'Sorry ?, you do not have permission to run that command!', message.author.mention)
     return;
 
 def json_reader(data_type): # JSON READ / WRITE
@@ -258,7 +260,7 @@ async def on_message(message):
             if message.author.bot == False:
                 if admin:
                     msg = message.content[len('.addswear '):]
-                    fury.execute("INSERT INTO swear VALUES ('{}','{}')".format(message.server.id, msg.lower()))
+                    fury.execute("INSERT INTO swear VALUES ('?','?')", message.server.id, msg.lower())
                     conn.commit()
                 else:
                     await permission_response(message)
@@ -267,7 +269,7 @@ async def on_message(message):
             if message.author.bot == False:
                 if admin:
                     msg = message.content[len('.removeswear '):]
-                    fury.execute("DELETE FROM swear WHERE serverid = '{}' AND phrase = '{}';".format(message.server.id, msg.lower()))
+                    fury.execute("DELETE FROM swear WHERE serverid = '?' AND phrase = '?';", message.server.id, msg.lower())
                     conn.commit()
                 else:
                     await permission_response(message)
@@ -276,7 +278,7 @@ async def on_message(message):
             if message.author.bot == False:
                 if admin:
                     msg = message.content[len('.addswearexception '):]
-                    fury.execute("INSERT INTO swearexception VALUES ('{}','{}')".format(message.server.id, msg.lower()))
+                    fury.execute("INSERT INTO swearexception VALUES ('?','?')", message.server.id, msg.lower())
                     conn.commit()
                 else:
                     await permission_response(message)
@@ -285,7 +287,7 @@ async def on_message(message):
             if message.author.bot == False:
                 if admin:
                     msg = message.content[len('.removeswearexception '):]
-                    fury.execute("DELETE FROM swearexception WHERE serverid = '{}' AND phrase = '{}';".format(message.server.id, msg.lower()))
+                    fury.execute("DELETE FROM swearexception WHERE serverid = '?' AND phrase = '?';", message.server.id, msg.lower())
                     conn.commit()
                 else:
                     await permission_response(message)
@@ -370,15 +372,18 @@ async def on_message(message):
             
         swearEvent = False
         if admin == False and message.author.bot == False: # START OF SWEAR PROTECTION
-        # if message.author.bot == False: # START OF SWEAR PROTECTION
+        #if message.author.bot == False: # START OF SWEAR PROTECTION
             offenceTime = swear_filter(message.server.id, message.content, message.author.id)
             if offenceTime > 0:
                 swearEvent = True
                 if offenceTime >= 3:
                     await client.send_message(message.channel, '!mute {} {}'.format(offenceTime, message.author.mention))
 
+
+        #if muteMember == False and message.author.bot == False: # START OF SPAM PROTECTION
+
         if unknown_command == True and message.content.startswith('..') == False:
-            await client.send_message(message.channel, 'Sorry {}, but the given command does not currently exist!'.format(message.author.mention))         
+            await client.send_message(message.channel, 'Sorry {}, but the given command does not currently exist!'.format(message.author.mention))
 
         if message.content.startswith('.'):
             if ignore:
@@ -392,7 +397,7 @@ async def on_message(message):
                 await client.delete_message(message)
         elif swearEvent:
             await client.delete_message(message)
-    
+
 # START
 try:
     client.run(json_reader('login')) # private
