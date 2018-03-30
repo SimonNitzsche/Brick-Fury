@@ -45,3 +45,10 @@ $RECYCLE.BIN/
 Network Trash Folder
 Temporary Items
 .apdisk
+Dev/settings.json
+Dev/fury.sqlite
+Dev/BrickFury.bat
+Dev/BrickFury.py
+fury.sqlite
+testing.txt
+settings.json
