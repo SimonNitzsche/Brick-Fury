@@ -46,12 +46,10 @@ def swear_filter(serverid, message, userid):
         offenceTime = 0
         msg = message.lower()
         #msg = ''.join(e for e in message.lower() if e.isalnum())
-        for exceptions in fury.execute("SELECT * FROM swearexception WHERE serverid = '?'", serverid):
-                exception = exceptions[1]
-                offenceTime -= msg.count('{}'.format(exception))
-        for row in fury.execute("SELECT * FROM swear WHERE serverid = '?'", serverid):
-            phrase = row[1]
-            offenceTime += msg.count('{}'.format(phrase))
+        for exception in fury.execute("SELECT phrase FROM swearexception WHERE serverid = '{}'".format(serverid)):
+            offenceTime -= msg.count('{}'.format(exception[0]))
+        for phrase in fury.execute("SELECT phrase FROM swear WHERE serverid = '{}'".format(serverid)):
+            offenceTime += msg.count('{}'.format(phrase[0]))
         return offenceTime;
 
 async def permission_response(message):
