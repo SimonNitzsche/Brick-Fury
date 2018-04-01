@@ -36,7 +36,7 @@ def log(text):
 def swear_filter(serverid, message, userid):
     global bypass
     bypass = None
-    for bypass_state in mem.execute("SELECT bypass_state FROM bypass WHERE serverid = '{}' AND userid = '{}'".format(serverid, userid)):
+    for bypass_state in mem.execute("SELECT bypass_state FROM bypass WHERE serverid = ? AND userid = ?", (serverid, userid)):
         bypass = bypass_state[0]
         #log(bypass_state)
     #log(bypass)
@@ -46,9 +46,9 @@ def swear_filter(serverid, message, userid):
         offenceTime = 0
         msg = message.lower()
         #msg = ''.join(e for e in message.lower() if e.isalnum())
-        for exception in fury.execute("SELECT phrase FROM swearexception WHERE serverid = '{}'".format(serverid)):
+        for exception in fury.execute("SELECT phrase FROM swearexception WHERE serverid = ?", (serverid)):
             offenceTime -= msg.count('{}'.format(exception[0]))
-        for phrase in fury.execute("SELECT phrase FROM swear WHERE serverid = '{}'".format(serverid)):
+        for phrase in fury.execute("SELECT phrase FROM swear WHERE serverid = ?", (serverid)):
             offenceTime += msg.count('{}'.format(phrase[0]))
         return offenceTime;
 
@@ -237,13 +237,13 @@ async def on_message(message):
                     ignore = True
                     for members in message.mentions:
                         #log(members)
-                        mem.execute("INSERT INTO bypass VALUES ('{}','{}', '1')".format(msg.server.id, members.id))
+                        mem.execute("INSERT INTO bypass VALUES (?, ?, '1')", (msg.server.id, members.id))
                         con.commit()
                         #log('Before')
                         await client.delete_message(message)
                         await client.wait_for_message(timeout=60, author=members)
                         #log('After')
-                        mem.execute("DELETE FROM bypass WHERE serverid = '{}' AND userid = '{}';".format(msg.server.id, members.id))
+                        mem.execute("DELETE FROM bypass WHERE serverid = ? AND userid = ?;", (msg.server.id, members.id))
                         con.commit()
                         
         if message.content.startswith('.quit'): # QUIT
@@ -256,7 +256,7 @@ async def on_message(message):
             if message.author.bot == False:
                 if admin:
                     msg = message.content[len('.addswear '):]
-                    fury.execute("INSERT INTO swear VALUES ('?','?')", message.server.id, msg.lower())
+                    fury.execute("INSERT INTO swear VALUES (?,?)", (message.server.id, msg.lower()))
                     conn.commit()
                 else:
                     await permission_response(message)
@@ -265,7 +265,7 @@ async def on_message(message):
             if message.author.bot == False:
                 if admin:
                     msg = message.content[len('.removeswear '):]
-                    fury.execute("DELETE FROM swear WHERE serverid = '?' AND phrase = '?';", message.server.id, msg.lower())
+                    fury.execute("DELETE FROM swear WHERE serverid = ? AND phrase = ?;", (message.server.id, msg.lower()))
                     conn.commit()
                 else:
                     await permission_response(message)
@@ -274,7 +274,7 @@ async def on_message(message):
             if message.author.bot == False:
                 if admin:
                     msg = message.content[len('.addswearexception '):]
-                    fury.execute("INSERT INTO swearexception VALUES ('?','?')", message.server.id, msg.lower())
+                    fury.execute("INSERT INTO swearexception VALUES (?,?)", (message.server.id, msg.lower()))
                     conn.commit()
                 else:
                     await permission_response(message)
@@ -283,7 +283,7 @@ async def on_message(message):
             if message.author.bot == False:
                 if admin:
                     msg = message.content[len('.removeswearexception '):]
-                    fury.execute("DELETE FROM swearexception WHERE serverid = '?' AND phrase = '?';", message.server.id, msg.lower())
+                    fury.execute("DELETE FROM swearexception WHERE serverid = ? AND phrase = ?;", (message.server.id, msg.lower()))
                     conn.commit()
                 else:
                     await permission_response(message)
