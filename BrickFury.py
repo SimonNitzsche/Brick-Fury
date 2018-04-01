@@ -245,7 +245,26 @@ async def on_message(message):
                         #log('After')
                         mem.execute("DELETE FROM bypass WHERE serverid = ? AND userid = ?;", (msg.server.id, members.id, ))
                         con.commit()
-                        
+
+        if message.content.startswith('.mention '): # MENTION USERS !!! MOST LIKELY HAS BUGS
+            unknown_command = False
+            if muteMember:
+                msg = message.content[len('.mention '):]
+                args = msg.split(' ')
+                member_list = []
+                if len(args) > 0:
+                    if len(message.mentions) > 0:
+                            for member_mentions in message.mentions:
+                                member_list.append(member_mentions.mention)
+                                
+                    for members in args:
+                        member = message.server.get_member(members)
+                        if member != None:
+                            member_list.append(member.mention)
+
+                await client.send_message(message.channel, ' '.join(map(str, member_list)))
+                
+        
         if message.content.startswith('.quit'): # QUIT
             unknown_command = False
             if message.author.id == '85702178525704192' or message.author.id == '227161120069124096' or message.author.id == '173324987665612802' or message.author.id == '172846477683458049':
