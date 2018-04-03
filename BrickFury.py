@@ -316,7 +316,7 @@ async def on_message(message):
 
         if message.content.startswith('.watch '): # WATCH
             unknown_command = False
-            if muteMember:
+            if admin:
                 msg = message.content[len('.watch '):]
                 args = msg.split(' ')
                 if len(args) > 0:
