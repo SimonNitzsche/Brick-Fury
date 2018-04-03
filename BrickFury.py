@@ -13,6 +13,8 @@ fury.execute('''CREATE TABLE IF NOT EXISTS swear
              (serverid bigint, phrase text)''') # SWEAR
 fury.execute('''CREATE TABLE IF NOT EXISTS swearexception
              (serverid bigint, phrase text)''') # SWEAR EXCEPTION
+fury.execute('''CREATE TABLE IF NOT EXISTS watch
+             (serverid bigint, userid bigint)''') # WATCH
 
 
 con = sqlite3.connect(':memory:')
@@ -50,6 +52,12 @@ def swear_filter(serverid, message, userid):
             offenceTime -= msg.count('{}'.format(exception[0]))
         for phrase in fury.execute("SELECT phrase FROM swear WHERE serverid = ?", (serverid, )):
             offenceTime += msg.count('{}'.format(phrase[0]))
+
+        if offenceTime > 0:
+            watch_server = client.get_server(serverid)
+            watch_member = watch_server.get_member(userid)
+            watch(watch_server, watch_member, 'swear', message)
+        
         return offenceTime;
 
 async def permission_response(message):
@@ -85,10 +93,58 @@ def json_reader(data_type): # JSON READ / WRITE
                 log('> Attempting Login.')
                 return token;
 
+async def watch(server, user, action, data):
+    channel = discord.utils.get(server.channels, name='watch')
+    for userid in fury.execute("SELECT * FROM watch WHERE serverid = ? AND userid = ?", (server.id, user.id)):
+        #log('Watch called: {} {} {} {}'.format(server, user, action, data.content))
+        if action == 'message': # MESSAGE
+            await client.send_message(channel, '[{}] [{}] {}'.format(data.channel, user.mention, data.content))
+            
+        elif action == 'message_edit': # MESSAGE EDIT
+            await client.send_message(channel, '[{}] [{}] [edited] {}'.format(data.channel, user.mention, data.content))
+            
+        elif action == 'swear': # SWEAR
+            await client.send_message(channel, '[{}] [{}] [SWEAR EVENT] {}'.format(data.channel, user.mention, data.content))
+            
+        elif action == 'on_reaction_add':
+            await client.send_message(channel, '[{}] [REACTION ADD] [WIP]'.format(user.mention))
+            
+        elif action == 'on_member_join':
+            await client.send_message(channel, '[{}] [USER JOINED] [WIP]'.format(user.mention))
+            
+        elif action == 'on_member_leave':
+            await client.send_message(channel, '[{}] [USER LEFT] [WIP]'.format(user.mention))
+            
+        elif action == 'on_member_update':
+            await client.send_message(channel, '[{}] [PROFILE UPDATED]'.format(user.mention)) 
+            
+        #elif action == 'on_voice_state_update': # DO NOT ACKNOWLEDGE
+            #await client.send_message(channel, '[{}] [VOICE STATE UPDATED]'.format(user.mention))
+            
+        elif action == 'on_member_ban':
+            await client.send_message(channel, '[{}] [USER BANNED]'.format(user.mention))
+            
+        elif action == 'on_member_unban':
+            await client.send_message(channel, '[{}] [USER UNBANNED]'.format(user.mention))
+
+
+async def watch_logs(server, message):
+    if server != None:
+        channel = discord.utils.get(server.channels, name='watch')
+        await client.send_message(channel, message)
+    
+
+#@client.event
+#async def on_error(event, args, kwargs):
+#    log_server = client.get_server('227127903249367041')
+#    log_channel = discord.utils.get(log_server.channels, name='bot-logs')
+#    await client.send_message(log_channel, 'ERROR: Event {} with args {} and kwargs {}'.format(event, args, kwargs))
+
 @client.event
 async def on_ready():
     log('> Logged in: {}, {}, Initiated.'.format(client.user.name, client.user.id))
     await client.change_presence(game=discord.Game(name='LEGO Universe'))
+    
 @client.event
 async def on_server_join(server):
     log('> Joined {}'.format(server.name))
@@ -103,8 +159,37 @@ async def on_server_remove(server):
     log('> Removed from {}'.format(server.name))
 
 @client.event
+async def on_reaction_add(reaction, user):
+    await watch(reaction.message.server, user, 'on_reaction_add', reaction)
+
+@client.event
+async def on_member_join(member):
+    await watch(member.server, member, 'on_member_join')
+
+@client.event
+async def on_member_leave(member):
+    await watch(member.server, member, 'on_member_leave')
+
+@client.event
+async def on_member_update(before, after):
+    await watch(after.server, after, 'on_member_update', before)
+
+@client.event
+async def on_voice_state_update(before, after):
+    await watch(after.server, after, 'on_voice_state_update', before)
+
+@client.event
+async def on_member_ban(member):
+    await watch(member.server, member, 'on_member_ban')
+
+@client.event
+async def on_member_unban(server, user):
+    await watch(server, user, 'on_member_ban')
+
+@client.event
 async def on_message_edit(message_before, message):
     if message.server != None: # SERVER LOGS
+        await watch(message.server, message.author, 'message_edit', message)
         channel = discord.utils.get(message.server.channels, name='logs')
         if channel != None:
             if message.channel != channel:
@@ -142,6 +227,7 @@ async def on_message(message):
     global ignore
     
     if message.server != None: # SERVER LOG
+        await watch(message.server, message.author, 'message', message)
         channel = discord.utils.get(message.server.channels, name='logs') #
         if channel != None:
             if message.channel != channel:
@@ -228,6 +314,26 @@ async def on_message(message):
             unknown_command = False
 
 
+        if message.content.startswith('.watch '): # WATCH
+            unknown_command = False
+            msg = message.content[len('.watch '):]
+            args = msg.split(' ')
+            if len(args) > 0:
+                if args[0] == 'add':
+                    if len(message.mentions) > 0:
+                        for member_mentions in message.mentions:
+                            fury.execute("INSERT INTO watch VALUES (?, ?)", (message.server.id, member_mentions.id, ))
+                            conn.commit()
+                            await watch_logs(message.server, '**{} is now being watched!**'.format(member_mentions.mention))
+                elif args[0] == 'remove':
+                    if len(message.mentions) > 0:
+                        for member_mentions in message.mentions:
+                            fury.execute("DELETE FROM watch WHERE serverid = ? AND userid = ?;", (message.server.id, member_mentions.id, ))
+                            conn.commit()
+                            await watch_logs(message.server, '**{} is no longer being watched!**'.format(member_mentions.mention))
+                else:
+                    await client.send_message(message.channel, 'Sorry {}, but the given argument does not currently exist!'.format(message.author.mention))
+                        
         if message.content.startswith('.allow'): # ALLOW SWEARING
             unknown_command = False
             if muteMember:
