@@ -115,8 +115,8 @@ async def watch(server, user, action, data):
         elif action == 'on_member_leave':
             await client.send_message(channel, '[{}] [USER LEFT] [WIP]'.format(user.mention))
             
-        elif action == 'on_member_update':
-            await client.send_message(channel, '[{}] [PROFILE UPDATED]'.format(user.mention)) 
+        #elif action == 'on_member_update':
+            #await client.send_message(channel, '[{}] [PROFILE UPDATED]'.format(user.mention)) 
             
         #elif action == 'on_voice_state_update': # DO NOT ACKNOWLEDGE
             #await client.send_message(channel, '[{}] [VOICE STATE UPDATED]'.format(user.mention))
