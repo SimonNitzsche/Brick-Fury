@@ -316,23 +316,24 @@ async def on_message(message):
 
         if message.content.startswith('.watch '): # WATCH
             unknown_command = False
-            msg = message.content[len('.watch '):]
-            args = msg.split(' ')
-            if len(args) > 0:
-                if args[0] == 'add':
-                    if len(message.mentions) > 0:
-                        for member_mentions in message.mentions:
-                            fury.execute("INSERT INTO watch VALUES (?, ?)", (message.server.id, member_mentions.id, ))
-                            conn.commit()
-                            await watch_logs(message.server, '**{} is now being watched!**'.format(member_mentions.mention))
-                elif args[0] == 'remove':
-                    if len(message.mentions) > 0:
-                        for member_mentions in message.mentions:
-                            fury.execute("DELETE FROM watch WHERE serverid = ? AND userid = ?;", (message.server.id, member_mentions.id, ))
-                            conn.commit()
-                            await watch_logs(message.server, '**{} is no longer being watched!**'.format(member_mentions.mention))
-                else:
-                    await client.send_message(message.channel, 'Sorry {}, but the given argument does not currently exist!'.format(message.author.mention))
+            if muteMember:
+                msg = message.content[len('.watch '):]
+                args = msg.split(' ')
+                if len(args) > 0:
+                    if args[0] == 'add':
+                        if len(message.mentions) > 0:
+                            for member_mentions in message.mentions:
+                                fury.execute("INSERT INTO watch VALUES (?, ?)", (message.server.id, member_mentions.id, ))
+                                conn.commit()
+                                await watch_logs(message.server, '**{} is now being watched!**'.format(member_mentions.mention))
+                    elif args[0] == 'remove':
+                        if len(message.mentions) > 0:
+                            for member_mentions in message.mentions:
+                                fury.execute("DELETE FROM watch WHERE serverid = ? AND userid = ?;", (message.server.id, member_mentions.id, ))
+                                conn.commit()
+                                await watch_logs(message.server, '**{} is no longer being watched!**'.format(member_mentions.mention))
+                    else:
+                        await client.send_message(message.channel, 'Sorry {}, but the given argument does not currently exist!'.format(message.author.mention))
                         
         if message.content.startswith('.allow'): # ALLOW SWEARING
             unknown_command = False
