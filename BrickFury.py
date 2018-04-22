@@ -109,11 +109,11 @@ async def watch(server, user, action, data):
         elif action == 'on_reaction_add':
             await client.send_message(channel, '[{}] [REACTION ADD] [WIP]'.format(user.mention))
             
-        elif action == 'on_member_join':
-            await client.send_message(channel, '[{}] [USER JOINED] [WIP]'.format(user.mention))
+        #elif action == 'on_member_join':
+        #    await client.send_message(channel, '[{}] [USER JOINED] [WIP]'.format(user.mention))
             
-        elif action == 'on_member_leave':
-            await client.send_message(channel, '[{}] [USER LEFT] [WIP]'.format(user.mention))
+        #elif action == 'on_member_leave':
+        #    await client.send_message(channel, '[{}] [USER LEFT] [WIP]'.format(user.mention))
             
         #elif action == 'on_member_update':
             #await client.send_message(channel, '[{}] [PROFILE UPDATED]'.format(user.mention)) 
@@ -162,21 +162,9 @@ async def on_server_remove(server):
 async def on_reaction_add(reaction, user):
     await watch(reaction.message.server, user, 'on_reaction_add', reaction)
 
-@client.event
-async def on_member_join(member):
-    await watch(member.server, member, 'on_member_join')
-
-@client.event
-async def on_member_leave(member):
-    await watch(member.server, member, 'on_member_leave')
-
-@client.event
-async def on_member_update(before, after):
-    await watch(after.server, after, 'on_member_update', before)
-
-@client.event
-async def on_voice_state_update(before, after):
-    await watch(after.server, after, 'on_voice_state_update', before)
+#@client.event
+#async def on_member_update(before, after):
+#    await watch(after.server, after, 'on_member_update', before)
 
 @client.event
 async def on_member_ban(member):
