@@ -98,11 +98,35 @@ async def watch(server, user, action, data):
     for userid in fury.execute("SELECT * FROM watch WHERE serverid = ? AND userid = ?", (server.id, user.id)):
         #log('Watch called: {} {} {} {}'.format(server, user, action, data.content))
         if action == 'message': # MESSAGE
-            await client.send_message(channel, '[{}] [{}] {}'.format(data.channel, user.mention, data.content))
-            
+            url = None
+            for attach in data.attachments:
+                str_attach = str(attach)
+                attach_replace = str_attach.replace('\'', '"')
+                attachment_info = json.loads(attach_replace)
+                url = attachment_info['url']
+            content = data.content
+            for members in data.mentions:
+                content = data.content.replace(members.mention , '@{}#{}'.format(members.name, members.discriminator))
+            if url == None:
+                await client.send_message(channel, '[{}] [{}] {}'.format(data.channel, user.mention, data.content))
+            else:
+                await client.send_message(channel, '[{}] [{}] {} {}'.format(data.channel, user.mention, data.content, url))
+           
         elif action == 'message_edit': # MESSAGE EDIT
-            await client.send_message(channel, '[{}] [{}] [edited] {}'.format(data.channel, user.mention, data.content))
-            
+            url = None
+            for attach in data.attachments:
+                str_attach = str(attach)
+                attach_replace = str_attach.replace('\'', '"')
+                attachment_info = json.loads(attach_replace)
+                url = attachment_info['url']
+            content = data.content
+            for members in data.mentions:
+                content = data.content.replace(members.mention , '@{}#{}'.format(members.name, members.discriminator))
+            if url == None:
+                await client.send_message(channel, '[{}] [{}] [edited] {}'.format(data.channel, user.mention, data.content))
+            else:
+                await client.send_message(channel, '[{}] [{}] [edited] {} {}'.format(data.channel, user.mention, data.content, url))
+                
         elif action == 'swear': # SWEAR
             await client.send_message(channel, '[{}] [{}] [SWEAR EVENT] {}'.format(data.channel, user.mention, data.content))
             
