@@ -1,8 +1,19 @@
 import discord
+from discord.ext import commands
 import sqlite3
 import json
 import time
+import pytesseract
+import io
+import requests
+import os
+from PIL import Image, ImageEnhance, ImageFilter
 
+
+pytesseract.tesseract_cmd = 'C:\\Program Files (x86)\\Tesseract-OCR\\tesseract'
+
+#description = '''A bot to protect against swearing and spam.'''
+#bot = commands.Bot(command_prefix='.', description=description)
 
 conn = sqlite3.connect('fury.sqlite')
 fury = conn.cursor()
@@ -15,6 +26,7 @@ fury.execute('''CREATE TABLE IF NOT EXISTS swearexception
              (serverid bigint, phrase text)''') # SWEAR EXCEPTION
 fury.execute('''CREATE TABLE IF NOT EXISTS watch
              (serverid bigint, userid bigint)''') # WATCH
+
 
 
 con = sqlite3.connect(':memory:')
@@ -35,7 +47,7 @@ def log(text):
     time_log = time.strftime("%X", time.localtime(time.time()))
     print('[{}] {}'.format(time_log, text))
 
-def swear_filter(serverid, message, userid):
+async def swear_filter(serverid, message, userid, message_data):
     global bypass
     bypass = None
     for bypass_state in mem.execute("SELECT bypass_state FROM bypass WHERE serverid = ? AND userid = ?", (serverid, userid, )):
@@ -45,6 +57,19 @@ def swear_filter(serverid, message, userid):
     if bypass == 1:
         return 0;
     else:
+        
+        text = py_tesseract(message_data)
+        if text != None:
+            message += '\n'
+            message += '\n'
+            message += text
+
+            log_server = client.get_server('227127903249367041')
+            log_channel = discord.utils.get(log_server.channels, name='bot-logs')
+            await client.send_message(log_channel, '[IMAGE TEXT] {}'.format(message))
+            
+            #log(message)
+
         offenceTime = 0
         msg = message.lower()
         #msg = ''.join(e for e in message.lower() if e.isalnum())
@@ -53,12 +78,41 @@ def swear_filter(serverid, message, userid):
         for phrase in fury.execute("SELECT phrase FROM swear WHERE serverid = ?", (serverid, )):
             offenceTime += msg.count('{}'.format(phrase[0]))
 
-        if offenceTime > 0:
-            watch_server = client.get_server(serverid)
-            watch_member = watch_server.get_member(userid)
-            watch(watch_server, watch_member, 'swear', message)
+        #if offenceTime > 0:
+        #    watch_server = client.get_server(serverid)
+        #    watch_member = watch_server.get_member(userid)
+        #    await watch(watch_server, watch_member, 'swear', message)
         
         return offenceTime;
+
+def py_tesseract(message):
+    if message != None:
+        if message.server != None: # PY TESSERACT
+            url = None
+            for attach in message.attachments:
+                #log (attach)
+                str_attach = str(attach)
+                attach_replace = str_attach.replace('\'', '"')
+                attachment_info = json.loads(attach_replace)
+                url = attachment_info['url']
+            if url != None:
+                data = requests.get(url).content
+                image = Image.open(io.BytesIO(data))
+                image.filter(ImageFilter.MedianFilter())
+                enhancer = ImageEnhance.Contrast(image)
+                image = enhancer.enhance(2)
+                image.convert('1')
+                
+                image.filter(ImageFilter.SHARPEN)
+            
+                #image_id = attachment_info['id']
+                #filename = '{}.png'.format(image_id)
+
+                text = pytesseract.image_to_string(image)
+                return text
+        return None
+    return None
+
 
 async def permission_response(message):
     await client.send_message(message.channel, 'Sorry {}, you do not have permission to run that command!'.format(message.author.mention))
@@ -73,7 +127,6 @@ def json_reader(data_type): # JSON READ / WRITE
     exists = os.path.isfile(file)
 
     if exists == False:
-        import time
         time_log = time.strftime("%X", time.localtime(time.time()))
         token = input("[{}] What is the bot's login token? ".format(time_log))
         json_token = json.dumps({"token": token})
@@ -196,7 +249,7 @@ async def on_member_ban(member):
 
 @client.event
 async def on_member_unban(server, user):
-    await watch(server, user, 'on_member_ban')
+    await watch(server, user, 'on_member_unban')
 
 @client.event
 async def on_message_edit(message_before, message):
@@ -225,7 +278,7 @@ async def on_message_edit(message_before, message):
         admin = message.author.server_permissions.administrator
         if admin == False and message.author.bot == False: # START OF SWEAR PROTECTION
         #if message.author.bot == False: # START OF SWEAR PROTECTION
-            offenceTime = swear_filter(message.server.id, message.content, message.author.id)
+            offenceTime = await swear_filter(message.server.id, message.content, message.author.id, message)
             if offenceTime > 0:
                 await client.delete_message(message)
                 swearEvent = True
@@ -233,10 +286,23 @@ async def on_message_edit(message_before, message):
                     await client.send_message(message.channel, '!mute {} {}'.format(offenceTime, message.author.mention))
 
 
+#@bot.command(description='For when you wanna settle the score some other way')
+#async def mention(self, ctx):
+#    counter = 0
+#    #x = message.server.members
+#    x = ctx.server.members
+#    for member in x:
+#        counter += 1
+#    await bot.say('I am currently defending the {} members that are in this guild.'.format(counter))
+    #await client.send_message(message.channel, 'I am currently defending the {} members that are in this guild.'.format(counter))
+    #unknown_command = False
+
+
+
 @client.event
 async def on_message(message):
     global failsafe
-    global ignore
+    global ignore        
     
     if message.server != None: # SERVER LOG
         await watch(message.server, message.author, 'message', message)
@@ -301,7 +367,7 @@ async def on_message(message):
                             if args[3] == 'text':
                                 if arg[args[2]] == 'swearapprove':
                                     swearEvent = False
-                                    offenceTime = swear_filter(arg[args[0]], arg[args[3]])
+                                    offenceTime = swear_filter(arg[args[0]], arg[args[3]], None, None)
                                     if offenceTime > 0:
                                         swearEvent = True
                                     await client.send_message(message.channel, json.dumps({"serverid": arg[args[0]], "messageid": arg[args[1]], "type": 'swearevent', "text": swearEvent}))      
@@ -324,7 +390,6 @@ async def on_message(message):
             unknown_command = True
         if message.author.id == client.user.id:
             unknown_command = False
-
 
         if message.content.startswith('.watch '): # WATCH
             unknown_command = False
@@ -507,7 +572,7 @@ async def on_message(message):
         swearEvent = False
         if admin == False and message.author.bot == False: # START OF SWEAR PROTECTION
         #if message.author.bot == False: # START OF SWEAR PROTECTION
-            offenceTime = swear_filter(message.server.id, message.content, message.author.id)
+            offenceTime = await swear_filter(message.server.id, message.content, message.author.id, message)
             if offenceTime > 0:
                 swearEvent = True
                 if offenceTime >= 3:
