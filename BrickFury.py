@@ -27,6 +27,8 @@ fury.execute('''CREATE TABLE IF NOT EXISTS swearexception
 fury.execute('''CREATE TABLE IF NOT EXISTS watch
              (serverid bigint, userid bigint)''') # WATCH
 
+fury.execute('''CREATE TABLE IF NOT EXISTS rsvp
+             (serverid bigint, channelid bigint, name text, timestamp bigint, users text)''') # RSVP
 
 #fury.execute('''CREATE TABLE IF NOT EXISTS poll
 #             (messageid bigint, is_poll bit)''') # IS POLL
@@ -41,6 +43,10 @@ mem = con.cursor()
 
 mem.execute('''CREATE TABLE IF NOT EXISTS bypass
              (serverid bigint, userid bigint, bypass_state bit)''') # SWEAR BYPASS LIST
+mem.execute('''CREATE TABLE IF NOT EXISTS progress
+             (serverid bigint, ongoing bit)''') # RAFFLE IN PROGRESS
+mem.execute('''CREATE TABLE IF NOT EXISTS raffle
+             (serverid bigint, userid bigint)''') # RAFFLE
 
 client = discord.Client()
 #client.change_presence(status=dnd)
@@ -83,9 +89,9 @@ async def swear_filter(serverid, message, userid, message_data):
             message += '\n'
             message += text
 
-            #log_server = client.get_server('227127903249367041')
-            #log_channel = discord.utils.get(log_server.channels, name='bot-logs')
-            #await client.send_message(log_channel, '[IMAGE TEXT] {}'.format(message))
+            log_server = client.get_server('227127903249367041')
+            log_channel = discord.utils.get(log_server.channels, name='bot-logs')
+            await client.send_message(log_channel, '[IMAGE TEXT] {}'.format(message))
             
             #log(message)
 
@@ -258,10 +264,10 @@ async def audit(server, user, action, data):
                 await client.send_message(channel, '[{}] [ROLE] [MENTION] {} to {}'.format(user.name, data.mentionable, user.mentionable))
             
         elif action == 'on_member_ban':
-            await client.send_message(channel, '[{}] [BANNED]'.format(user.mention))
+            await client.send_message(channel, '[{}#{}] [BANNED]'.format(user.name, user.discriminator))
             
         elif action == 'on_member_unban':
-            await client.send_message(channel, '[{}] [UNBANNED]'.format(user.mention))
+            await client.send_message(channel, '[{}#{}] [UNBANNED]'.format(user.name, user.discriminator))
     
 async def watch(server, user, action, data):
     channel = discord.utils.get(server.channels, name='watch')
@@ -320,11 +326,20 @@ async def watch(server, user, action, data):
             #await client.send_message(channel, '[{}] [VOICE STATE UPDATED]'.format(user.mention))
             
         elif action == 'on_member_ban':
-            await client.send_message(channel, '[{}] [USER BANNED]'.format(user.mention))
+            await client.send_message(channel, '[{}#{}] [USER BANNED]'.format(user.name, user.discriminator))
             
         elif action == 'on_member_unban':
-            await client.send_message(channel, '[{}] [USER UNBANNED]'.format(user.mention))
+            await client.send_message(channel, '[{}#{}] [USER UNBANNED]'.format(user.name, user.discriminator))
 
+def make_printable(text):
+    return ''.join(i for i in text if ord(i)<128)
+
+def is_number(s):
+    try:
+        float(s)
+        return True
+    except ValueError:
+        return False
 
 async def watch_logs(server, message):
     if server != None:
@@ -466,7 +481,7 @@ async def on_message_edit(message_before, message):
         if channel != None:
             if message.channel != channel:
                 member = message.server.get_member('344569392572530690') # ECHO 
-                if member.status == discord.Status.offline: # IF OFFLINE
+                if member == None or member.status == discord.Status.offline: # IF OFFLINE
                     url = None
                     for attach in message.attachments:
                         str_attach = str(attach)
@@ -490,8 +505,20 @@ async def on_message_edit(message_before, message):
                 await client.delete_message(message)
                 swearEvent = True
                 if offenceTime >= 3:
-                    await client.send_message(message.channel, '!mute {} {}'.format(offenceTime, message.author.mention))
+                    member = message.server.get_member('344569392572530690') # ECHO
+                    if member != None and member.status != discord.Status.offline: # IF OFFLINE
+                        await client.send_message(message.channel, '!mute {} {}'.format(offenceTime, message.author.mention))
 
+        url = None
+        for attach in message.attachments:
+            #log (attach)
+            str_attach = str(attach)
+            attach_replace = str_attach.replace('\'', '"')
+            attachment_info = json.loads(attach_replace)
+            url = attachment_info['url']
+        if url != None:
+            mem.execute("DELETE FROM bypass WHERE serverid = ? AND userid = ?;", (msg.server.id, members.id, ))
+            con.commit()
 
 #@bot.command(description='For when you wanna settle the score some other way')
 #async def mention(self, ctx):
@@ -514,8 +541,8 @@ async def on_message(message):
         channel = discord.utils.get(message.server.channels, name='logs') #
         if channel != None:
             if message.channel != channel:
-                member = message.server.get_member('344569392572530690') # ECHO 
-                if member.status == discord.Status.offline: # IF OFFLINE
+                member = message.server.get_member('344569392572530690') # ECHO
+                if member == None or member.status == discord.Status.offline: # IF OFFLINE
                     url = None
                     for attach in message.attachments:
                         str_attach = str(attach)
@@ -572,7 +599,7 @@ async def on_message(message):
                             if args[3] == 'text':
                                 if arg[args[2]] == 'swearapprove':
                                     swearEvent = False
-                                    offenceTime = swear_filter(arg[args[0]], arg[args[3]], None, None)
+                                    offenceTime = await swear_filter(arg[args[0]], arg[args[3]], None, None)
                                     if offenceTime > 0:
                                         swearEvent = True
                                     await client.send_message(message.channel, json.dumps({"serverid": arg[args[0]], "messageid": arg[args[1]], "type": 'swearevent', "text": swearEvent}))      
@@ -595,6 +622,252 @@ async def on_message(message):
             unknown_command = True
         if message.author.id == client.user.id:
             unknown_command = False
+
+        if message.content.lower().startswith('.ping'):
+            unknown_command = False
+            from datetime import datetime
+            datetime.utcnow()
+            time = message.timestamp
+            #log('{} and {}'.format(datetime.utcnow(), time))
+            get_utc = str(datetime.utcnow()).split(':')
+            get_time = str(time).split(':')
+            new_utc = float(get_utc[2]) + (float(get_utc[1]) * 60)
+            new_time = float(get_time[2]) + (float(get_time[1]) * 60)
+            #log(get_utc)
+            #log(get_time)
+            act_time = (new_utc + 2) - new_time
+            #log(abs(act_time))
+            await client.send_message(message.channel, 'Pong! Approximate response time was {} seconds!'.format(abs(act_time)))
+            
+
+        if message.content.lower().startswith('.rsvp'):
+            unknown_command = False
+            args = message.content.split(' ')
+            if len(args) > 1:
+                if args[1] == 'c':
+                    if muteMember:
+                        if len(args) > 2:
+                            import time
+                            name = message.content[len('{} {} '.format(args[0], args[1])):]
+                            fury.execute("INSERT INTO rsvp VALUES (?, ?, ?, ?, ?)", (message.server.id, message.channel.id, name, int(time.time()), None, ))
+                            conn.commit()
+                            await client.send_message(message.channel, '{} created {} RSVP.'.format(message.author.mention, name))
+                    else:
+                        await permission_response(message)
+                elif args[1] == 'list':
+                    if muteMember:
+                        users = None
+                        name = None
+                        for user_list in fury.execute("SELECT users, name FROM rsvp WHERE serverid =? AND channelid =? ORDER BY timestamp DESC", (message.server.id, message.channel.id, )):
+                            users = user_list[0]
+                            name = user_list[1]
+                            break
+                        if users != None:
+                            await client.send_message(message.channel, 'The following users have entered into the {} RSVP:'.format(name))
+                            uargs = users.split(',')
+                            ulist = ''
+                            for x in range(len(uargs)):
+                                member = message.server.get_member('{}'.format(uargs[x]))
+                                if x == (len(uargs) - 1):
+                                    ulist += 'and {}.'.format(member.mention)
+                                else: 
+                                    ulist += '{}, '.format(member.mention)
+                            await client.send_message(message.channel, '{}'.format(ulist))
+                          
+
+            else:
+                users = None
+                name = None
+                for user_list in fury.execute("SELECT users, name FROM rsvp WHERE serverid =? AND channelid =? ORDER BY timestamp DESC", (message.server.id, message.channel.id, )):
+                    users = user_list[0]
+                    name = user_list[1]
+                    break
+
+                ulist = ''
+                entered = None
+                if users != None:
+                    uargs = users.split(',')
+                    for x in range(len(uargs)):
+                        if uargs[x] == message.author.id:
+                            entered = True
+                        ulist += '{},'.format(uargs[x])
+                if entered == None:
+                    if name != None:
+                        ulist += '{}'.format(message.author.id)
+                        fury.execute("UPDATE rsvp SET users = ? WHERE serverid = ? AND channelid = ? AND name = ?", (ulist, message.server.id, message.channel.id, name, ))
+                        conn.commit()
+                        await client.send_message(message.channel, '{} responded to the {} RSVP.'.format(message.author.mention, name))
+                
+
+                        
+
+        if message.content.startswith('.comm'):
+            unknown_command = False
+            args = message.content.split(' ')
+            if admin:
+                if len(args) > 1:
+                    if args[1] == 'c' or args[1] == 'create':
+                        await client.send_message(message.channel, 'Command create called.')
+                        if len(args) > 2:
+                            await client.send_message(message.channel, 'Command name (arg2) specified as \'{}\'.'.format(args[2]))
+                            if len(args) > 3 and is_number(args[3]):
+                                await client.send_message(message.channel, 'Command argument count (arg3) specified as \'{}\'.'.format(args[3]))
+                                if len(args) > 4:
+                                    log('end')
+                        else:
+                            await client.send_message(message.channel, 'There is not enough arguments!')
+                    else:
+                        await client.send_message(message.channel, 'Invalid argument!')
+            else:
+                await permission_response(message)
+                
+                        
+
+        #mem.execute('''CREATE TABLE IF NOT EXISTS progress
+            #(serverid bigint, ongoing bit)''') # RAFFLE IN PROGRESS
+        #mem.execute('''CREATE TABLE IF NOT EXISTS raffle
+            #(serverid bigint, userid bigint)''') # RAFFLE'
+
+        if message.content.startswith('.sort'):
+            unknown_command = False
+            appinfo = await client.application_info()
+            if appinfo.owner.id == message.author.id:
+                inte = 0
+                for count in fury.execute("SELECT count(*) FROM swear WHERE serverid = ?", (message.server.id, )):
+                    for x in range(int(count[0])):
+                        for phrase in fury.execute("SELECT phrase FROM swear WHERE serverid = ?", (message.server.id, )):
+                            inte += 1
+                            log(inte)
+                            fury.execute("DELETE FROM swear WHERE serverid = ? AND phrase = ?", (message.server.id, phrase[0], ))
+                            fury.execute("INSERT INTO swear VALUES (?, ?)", (message.server.id, phrase[0], ))
+                            conn.commit()
+                inte = 0
+                for count in fury.execute("SELECT count(*) FROM swearexception WHERE serverid = ?", (message.server.id, )):
+                    for x in range(int(count[0])):
+                        for phrase in fury.execute("SELECT phrase FROM swearexception WHERE serverid = ?", (message.server.id, )):
+                            inte += 1
+                            log(inte)
+                            fury.execute("DELETE FROM swearexception WHERE serverid = ? AND phrase = ?", (message.server.id, phrase[0], ))
+                            fury.execute("INSERT INTO swearexception VALUES (?, ?)", (message.server.id, phrase[0], ))
+                            conn.commit()
+
+
+
+
+
+        if message.content.startswith('.raffle'): # RAFFLE
+            unknown_command = False
+            ongoing = None
+            for is_ongoing in mem.execute("SELECT ongoing FROM progress WHERE serverid = ?", (message.server.id, )):
+                ongoing = is_ongoing[0]
+            entered = None
+            for is_entered in mem.execute("SELECT userid FROM raffle WHERE serverid = ? AND userid = ?", (message.server.id, message.author.id, )):
+                entered = is_entered[0]
+            args = message.content.split(' ')
+            if len(args) >= 2:
+                if muteMember:
+                    if args[1] == 'create' or args[1] == 'c': # CREATE
+                        if ongoing == None:
+                            mem.execute("INSERT INTO progress VALUES (?, 1)", (message.server.id, ))
+                            await client.send_message(message.channel, '{} has started a raffle! Type .raffle into chat and hit enter!'.format(message.author.mention))
+                        else:
+                            await client.send_message(message.channel, 'There is already an ongoing raffle {}.'.format(message.author.mention))
+                    elif args[1] == 'select' or args[1] == 's': # SELECT
+                        if ongoing == True:
+                            if len(args) >= 2:
+                                if len(args) == 3:
+                                    if is_number(args[2]):
+                                        import random
+                                        for x in range(int(args[2])):
+                                            prenumber = 0
+                                            for has_number in mem.execute("SELECT * FROM raffle WHERE serverid = ?", (message.server.id, )):
+                                                prenumber += 1
+                                            number = random.randint(1, prenumber)
+                                            count = 1
+                                            for members in mem.execute("SELECT userid FROM raffle WHERE serverid = ?", (message.server.id, )):
+                                                if count == number:
+                                                    member = message.server.get_member('{}'.format(members[0]))
+                                                    mem.execute("DELETE FROM raffle WHERE serverid = ? AND userid = ?", (message.server.id, member.id, ))
+                                                    await client.send_message(message.channel, '{} has been selected for the raffle!'.format(member.mention))
+                                                count += 1
+                                        
+                                else:
+                                    import random
+                                    for x in range(1):
+                                        prenumber = 0
+                                        for has_number in mem.execute("SELECT * FROM raffle WHERE serverid = ?", (message.server.id, )):
+                                            prenumber += 1
+                                        number = random.randint(1, prenumber)
+                                        count = 1
+                                        for members in mem.execute("SELECT userid FROM raffle WHERE serverid = ?", (message.server.id, )):
+                                            if count == number:
+                                                member = message.server.get_member('{}'.format(members[0]))
+                                                mem.execute("DELETE FROM raffle WHERE serverid = ? AND userid = ?", (message.server.id, member.id, ))
+                                                await client.send_message(message.channel, '{} has been selected for the raffle!'.format(member.mention))
+                                            count += 1
+                                    
+                        else:
+                            await client.send_message(message.channel, 'There\'s currently no ongoing raffle {}!'.format(message.author))
+                                
+
+                    elif args[1] == 'cancel':
+                        if ongoing == True:
+                            mem.execute("DELETE FROM raffle WHERE serverid = ?", (message.server.id, ))
+                            mem.execute("DELETE FROM progress WHERE serverid = ?", (message.server.id, ))
+                            await client.send_message(message.channel, 'Raffle has been cancelled by {}.'.format(message.author.mention))
+
+                else:
+                    await permission_response(message)
+                
+                
+            else:
+                if ongoing == True:
+                    if entered == None:
+                        mem.execute("INSERT INTO raffle VALUES (?, ?)", (message.server.id, message.author.id, ))
+                        await client.send_message(message.channel, '{} has entered into the raffle!'.format(message.author.mention))
+                    else:
+                        await client.send_message(message.channel, 'You have already entered into the raffle {}!'.format(message.author.mention))
+                #else:
+                    #await client.send_message(message.channel, 'There\' currently no ongoing raffle {}!'.format(message.author.mention))
+                    
+
+        if message.content.startswith('.random '): # RANDOM
+            unknown_command = False
+            if muteMember:
+                args = message.content.split(' ')
+                if len(args) > 2:
+                    if is_number(args[1]):
+                        if (message.server.member_count/10) >= int(args[1]):
+                            import random
+                            for x in range(int(args[1])):
+                                number = random.randint(1, message.server.member_count)
+                                count = 1
+                                for member in message.server.members:
+                                    if number == count:
+                                        await client.send_message(message.channel, '{} has been randomly selected!'.format(member.mention))
+                                        break
+                                    count += 1
+                        else:
+                            await client.send_message(message.channel, 'The value you ented is invalid {}. You cannot randomly pick more than 10% of the server!'.format(message.author.mention))
+
+        
+        if message.content.startswith('.run'):
+            unknown_command = False
+            appinfo = await client.application_info()
+            if appinfo.owner.id == message.author.id:
+                msg = message.content[len('.run '):]
+                try:
+                    eval(msg)
+                    try:
+                        await client.send_message(message.channel, 'Successfully executed code.')
+                    except discord.errors.Forbidden:
+                        pass
+                except:
+                    try:
+                        await client.send_message(message.channel, 'I was unable to execute your code, master.')
+                    except discord.errors.Forbidden:
+                        pass
+                        
 
         if message.content.startswith('.test'):
             unknown_command = False
@@ -631,6 +904,7 @@ async def on_message(message):
                     response += '\n: **.vote** - Finalizes a vote. Please see syntax.'
                     response += '\n: **.poll** - Finalizes a poll. Please see syntax.'
                     response += '\n: **.addreaction** - Add custom emoji reaction to a message.'
+                    response += '\n: **.random** - Picks a random member of this Discord.'
                 if admin:
                     response += '\n\n: **.watch** - Watch somebody and report their every move to a channel.'
                     response += '\n: **.addswear** - Add a word to the language filter.'
@@ -670,6 +944,8 @@ async def on_message(message):
                     for y in emoji_server.emojis:
                         if str(y) == '<:maude_will_find_you:343515988106674176>':
                             response = '\n: **.addreaction** *{}* {}'.format(message.id, y)
+                elif args[1] == 'raffle':
+                    response = ': **.random** {} (number of users to pick)'.format(message.server.member_count/10)
                 elif args[1] == 'watch':
                     response = ': **.watch** add/remove {}'.format(message.author.mention)
                 elif args[1] == 'addswear':
@@ -692,7 +968,8 @@ async def on_message(message):
                 elif response == None:
                     await client.send_message(message.channel, 'Sorry {}, but no instance of that command was found.'.format(message.author.mention))
                 
-
+                    
+            
         if message.content.startswith('.watch '): # WATCH
             unknown_command = False
             if admin:
@@ -730,9 +1007,17 @@ async def on_message(message):
                         await client.delete_message(message)
                         await client.wait_for_message(timeout=60, author=members)
                         #log('After')
-                        mem.execute("DELETE FROM bypass WHERE serverid = ? AND userid = ?;", (msg.server.id, members.id, ))
-                        con.commit()
-
+                        url = None
+                        for attach in message.attachments:
+                            #log (attach)
+                            str_attach = str(attach)
+                            attach_replace = str_attach.replace('\'', '"')
+                            attachment_info = json.loads(attach_replace)
+                            url = attachment_info['url']
+                        if url == None:
+                            mem.execute("DELETE FROM bypass WHERE serverid = ? AND userid = ?;", (msg.server.id, members.id, ))
+                            con.commit()
+                            
         if message.content.startswith('.mention '): # MENTION USERS !!! MOST LIKELY HAS BUGS
             unknown_command = False
             if muteMember:
@@ -864,18 +1149,10 @@ async def on_message(message):
                 await permission_response(message)
                 unknown_command = False
         if message.content.startswith('.members'): # MEMBERS COMMAND
-            counter = 0
-            x = message.server.members
-            for member in x:
-                counter += 1
-            await client.send_message(message.channel, 'I am currently defending the {} members that are in this guild.'.format(counter))
+            await client.send_message(message.channel, 'I am currently defending the {} members that are in this guild.'.format(message.server.member_count))
             unknown_command = False
-        elif message.content.startswith('.servers'): # SERVER COMMAND
-            counter = 0
-            x = client.servers
-            for server in x:
-                counter += 1
-            await client.send_message(message.channel, 'I am currently defending {} guilds.'.format(counter))
+        if message.content.startswith('.servers'): # SERVER COMMAND
+            await client.send_message(message.channel, 'I am currently defending {} guilds.'.format(len(client.servers)))
             unknown_command = False
             
         swearEvent = False
@@ -885,7 +1162,9 @@ async def on_message(message):
             if offenceTime > 0:
                 swearEvent = True
                 if offenceTime >= 3:
-                    await client.send_message(message.channel, '!mute {} {}'.format(offenceTime, message.author.mention))
+                    member = message.server.get_member('344569392572530690') # ECHO
+                    if member != None and member.status != discord.Status.offline: # IF OFFLINE
+                        await client.send_message(message.channel, '!mute {} {}'.format(offenceTime, message.author.mention))
 
 
         #if muteMember == False and message.author.bot == False: # START OF SPAM PROTECTION
