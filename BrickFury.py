@@ -8,7 +8,11 @@ import io
 import requests
 import os
 from PIL import Image, ImageEnhance, ImageFilter
+import colorama
+#from colorama import Fore, Style
+colorama.init()
 
+from functions import tracers
 
 pytesseract.tesseract_cmd = 'C:\\Program Files (x86)\\Tesseract-OCR\\tesseract'
 
@@ -49,6 +53,7 @@ mem.execute('''CREATE TABLE IF NOT EXISTS raffle
              (serverid bigint, userid bigint)''') # RAFFLE
 
 client = discord.Client()
+#appinfo = discord.AppInfo()
 #client.change_presence(status=dnd)
 failsafe = False
 ignore = False
@@ -57,7 +62,9 @@ file = 'settings.json'
 def log(text):
     import time
     time_log = time.strftime("%X", time.localtime(time.time()))
-    print('[{}] {}'.format(time_log, text))
+    #print('[{}] {}'.format(time_log, text))
+    #print(tracers.colors.OKGREEN + f'[{time_log}] ' + tracers.colors.ENDC + f'{text}')
+    print(f'{tracers.colors.strong.green}[{time_log}] {text}{tracers.colors.reset}')
     #try:
     #    log_server = client.get_server('227127903249367041')
     #    log_channel = discord.utils.get(log_server.channels, name='bot-logs')
@@ -94,21 +101,32 @@ async def swear_filter(serverid, message, userid, message_data):
             await client.send_message(log_channel, '[IMAGE TEXT] {}'.format(message))
             
             #log(message)
+        #censor_server = client.get_server(serverid)
+        #censor_member = censor_server.get_member(userid)
 
+        swears = ''
         offenceTime = 0
+        #swearCounter = 0
         msg = message.lower()
+        swearExceptionCounter = 0
+        #censor_channel = discord.utils.get(censor_server.channels, name='censor-log')
         #msg = ''.join(e for e in message.lower() if e.isalnum())
         for exception in fury.execute("SELECT phrase FROM swearexception WHERE serverid = ?", (serverid, )):
             offenceTime -= msg.count('{}'.format(exception[0]))
+            swearExceptionCounter += msg.count('{}'.format(exception[0]))
+            #if msg.count('{}'.format(exception[0])) > 0:
+                
         for phrase in fury.execute("SELECT phrase FROM swear WHERE serverid = ?", (serverid, )):
             offenceTime += msg.count('{}'.format(phrase[0]))
+            #swearCounter += msg.count('{}'.format(phrase[0]))
+            if msg.count('{}'.format(phrase[0])) > 0:
+                swears += '{}, '.format(phrase[0])
 
         #if offenceTime > 0:
         #    watch_server = client.get_server(serverid)
         #    watch_member = watch_server.get_member(userid)
         #    await watch(watch_server, watch_member, 'swear', message)
-        
-        return offenceTime;
+        return offenceTime, swears
 
 def py_tesseract(message, mode):
     if mode == 'message':
@@ -125,21 +143,28 @@ def py_tesseract(message, mode):
                     data = requests.get(url).content
                     image = Image.open(io.BytesIO(data))
 
+                    first = False
+                    second = False
                     try: 
                         image.filter(ImageFilter.MedianFilter())
                         enhancer = ImageEnhance.Contrast(image)
                         image = enhancer.enhance(2)
                         image.convert('1')
                     except ValueError:
-                        pass
+                        first = True
                     
-                    image.filter(ImageFilter.SHARPEN)
+                    try:
+                        image.filter(ImageFilter.SHARPEN)
+                    except ValueError:
+                        second = True
                 
                     #image_id = attachment_info['id']
                     #filename = '{}.png'.format(image_id)
-    
-                    text = pytesseract.image_to_string(image)
-                    return text
+                    if first and second:
+                        return None
+                    else:
+                        text = pytesseract.image_to_string(image)
+                        return text
             return None
         return None
     elif mode == 'image': # SCANS A DIRECT IMAGE
@@ -192,7 +217,7 @@ def json_reader(data_type): # JSON READ / WRITE
             if data_type == 'login':
                 token = arg[args[0]]
                 #log('> Attempting Login: Token {}'.format(token))
-                log('> Attempting Login.')
+                log(f'{tracers.colors.cyan}> Attempting Login.')
                 return token;
 
 async def checks(server, user, action, data):
@@ -355,7 +380,7 @@ async def watch_logs(server, message):
 
 @client.event
 async def on_ready():
-    log('> Logged in: {}, {}, Initiated.'.format(client.user.name, client.user.id))
+    log(f'{tracers.colors.cyan}> Logged in: {tracers.colors.strong.yellow}{client.user.name}, {tracers.colors.strong.cyan}{client.user.id}, {tracers.colors.strong.magenta}Initiated.')
     await client.change_presence(game=discord.Game(name='LEGO Universe'))
 
 #@client.event
@@ -390,7 +415,7 @@ async def on_server_join(server):
 
 @client.event
 async def on_server_remove(server):
-    log('> Removed from {}'.format(server.name))
+    log(f'{tracers.colors.strong.red}> Removed from {server.name}')
 
 @client.event
 async def on_server_update(before, after):
@@ -498,16 +523,23 @@ async def on_message_edit(message_before, message):
 
         swearEvent = False
         admin = message.author.server_permissions.administrator
-        if admin == False and message.author.bot == False: # START OF SWEAR PROTECTION
+        muteMember = message.author.server_permissions.mute_members
+        if admin == False and message.author.bot == False and muteMember == False: # START OF SWEAR PROTECTION
         #if message.author.bot == False: # START OF SWEAR PROTECTION
-            offenceTime = await swear_filter(message.server.id, message.content, message.author.id, message)
+            offenceTime, swears = await swear_filter(message.server.id, message.content, message.author.id, message)
             if offenceTime > 0:
-                await client.delete_message(message)
+                try:
+                    await client.delete_message(message)
+                except discord.errors.Forbidden:
+                    pass
                 swearEvent = True
                 if offenceTime >= 3:
                     member = message.server.get_member('344569392572530690') # ECHO
                     if member != None and member.status != discord.Status.offline: # IF OFFLINE
                         await client.send_message(message.channel, '!mute {} {}'.format(offenceTime, message.author.mention))
+                censor_channel = discord.utils.get(message.server.channels, name='censor-log')
+                if censor_channel != None:
+                    await client.send_message(censor_channel, '{} swore while editing their message in {}, added {}totalling in {} offences.'.format(message.author.mention, message.channel.mention, swears, offenceTime))
 
         url = None
         for attach in message.attachments:
@@ -517,7 +549,7 @@ async def on_message_edit(message_before, message):
             attachment_info = json.loads(attach_replace)
             url = attachment_info['url']
         if url != None:
-            mem.execute("DELETE FROM bypass WHERE serverid = ? AND userid = ?;", (msg.server.id, members.id, ))
+            mem.execute("DELETE FROM bypass WHERE serverid = ? AND userid = ?;", (message.server.id, members.id, ))
             con.commit()
 
 #@bot.command(description='For when you wanna settle the score some other way')
@@ -583,11 +615,11 @@ async def on_message(message):
                 await client.send_message(log_channel, '[PM] [{}] -> [{}] {} {}'.format(client.user, message.channel.user, content, url))
 
         if message.author.id != client.user.id:
-            log('[DM] [{}#{}] {}'.format(message.author.name, message.author.discriminator, message.content))
+            log(f'{tracers.colors.strong.magenta}[DM] {tracers.colors.strong.yellow}[{message.author.name}#{message.author.discriminator}] {tracers.colors.strong.green}{message.content}')
             if message.author.id == '85702178525704192' or message.author.id == '227161120069124096' or message.author.id == '173324987665612802' or message.author.id == '172846477683458049':
                 if message.content.startswith('.restart'): # PM RESTART
                     await client.send_message(message.channel, '{} is restarting.'.format(client.user.name))
-                    log('> Manual PM Restart: {}, {}, Restarting.'.format(client.user.name, client.user.id))
+                    log(f'{tracers.colors.strong.red}> Manual PM Restart: {tracers.colors.strong.yellow}{client.user.name}, {tracers.colors.strong.cyan}{client.user.id}, {tracers.colors.strong.magenta}Restarting.')
                     await client.close()
             if message.content.startswith('.json '): # JSON CODES
                 com = message.content[len('.json '):]
@@ -599,7 +631,7 @@ async def on_message(message):
                             if args[3] == 'text':
                                 if arg[args[2]] == 'swearapprove':
                                     swearEvent = False
-                                    offenceTime = await swear_filter(arg[args[0]], arg[args[3]], None, None)
+                                    offenceTime, swears = await swear_filter(arg[args[0]], arg[args[3]], None, None)
                                     if offenceTime > 0:
                                         swearEvent = True
                                     await client.send_message(message.channel, json.dumps({"serverid": arg[args[0]], "messageid": arg[args[1]], "type": 'swearevent', "text": swearEvent}))      
@@ -625,19 +657,23 @@ async def on_message(message):
 
         if message.content.lower().startswith('.ping'):
             unknown_command = False
-            from datetime import datetime
-            datetime.utcnow()
-            time = message.timestamp
-            #log('{} and {}'.format(datetime.utcnow(), time))
-            get_utc = str(datetime.utcnow()).split(':')
-            get_time = str(time).split(':')
-            new_utc = float(get_utc[2]) + (float(get_utc[1]) * 60)
-            new_time = float(get_time[2]) + (float(get_time[1]) * 60)
-            #log(get_utc)
-            #log(get_time)
-            act_time = (new_utc + 2) - new_time
-            #log(abs(act_time))
-            await client.send_message(message.channel, 'Pong! Approximate response time was {} seconds!'.format(abs(act_time)))
+            if muteMember:
+                unknown_command = False
+                from datetime import datetime
+                datetime.utcnow()
+                time = message.timestamp
+                #log('{} and {}'.format(datetime.utcnow(), time))
+                get_utc = str(datetime.utcnow()).split(':')
+                get_time = str(time).split(':')
+                new_utc = float(get_utc[2]) + (float(get_utc[1]) * 60)
+                new_time = float(get_time[2]) + (float(get_time[1]) * 60)
+                #log(get_utc)
+                #log(get_time)
+                act_time = new_utc - new_time
+                #log(abs(act_time))
+                await client.send_message(message.channel, 'Pong! Approximate Discord latency is {} seconds!'.format(abs(act_time)))
+            else:
+                await permission_response(message)
             
 
         if message.content.lower().startswith('.rsvp'):
@@ -732,26 +768,26 @@ async def on_message(message):
             unknown_command = False
             appinfo = await client.application_info()
             if appinfo.owner.id == message.author.id:
-                inte = 0
+                #inte = 0
                 for count in fury.execute("SELECT count(*) FROM swear WHERE serverid = ?", (message.server.id, )):
                     for x in range(int(count[0])):
                         for phrase in fury.execute("SELECT phrase FROM swear WHERE serverid = ?", (message.server.id, )):
-                            inte += 1
-                            log(inte)
+                            #inte += 1
+                            #log(inte)
                             fury.execute("DELETE FROM swear WHERE serverid = ? AND phrase = ?", (message.server.id, phrase[0], ))
                             fury.execute("INSERT INTO swear VALUES (?, ?)", (message.server.id, phrase[0], ))
                             conn.commit()
-                inte = 0
+                #inte = 0
                 for count in fury.execute("SELECT count(*) FROM swearexception WHERE serverid = ?", (message.server.id, )):
                     for x in range(int(count[0])):
                         for phrase in fury.execute("SELECT phrase FROM swearexception WHERE serverid = ?", (message.server.id, )):
-                            inte += 1
-                            log(inte)
+                            #inte += 1
+                            #log(inte)
                             fury.execute("DELETE FROM swearexception WHERE serverid = ? AND phrase = ?", (message.server.id, phrase[0], ))
                             fury.execute("INSERT INTO swearexception VALUES (?, ?)", (message.server.id, phrase[0], ))
                             conn.commit()
 
-
+                await client.send_message(message.channel, 'I sorted this server\'s swear list for you master. ')
 
 
 
@@ -855,22 +891,22 @@ async def on_message(message):
             unknown_command = False
             appinfo = await client.application_info()
             if appinfo.owner.id == message.author.id:
-                msg = message.content[len('.run '):]
-                try:
-                    eval(msg)
-                    try:
-                        await client.send_message(message.channel, 'Successfully executed code.')
-                    except discord.errors.Forbidden:
-                        pass
-                except:
-                    try:
-                        await client.send_message(message.channel, 'I was unable to execute your code, master.')
-                    except discord.errors.Forbidden:
-                        pass
+                #msg = message.content[len('.run '):]
+                args = message.content.split(' ')
+                if args[1] == 'internal':
+                    if args[2] == 'echo':
+                        await client.send_message(message.channel, 'Comm not complete! Could not run internal command.')
                         
+
+        if message.content.startswith('.internal'):
+            unknown_command = False
+
+        if message.content.startswith('.log'):
+            unknown_command = False        
 
         if message.content.startswith('.test'):
             unknown_command = False
+            #log(f'{tracers.colors.strong.green}Testing')
 
         if message.content.startswith('.oldtest'):
             unknown_command = False
@@ -886,6 +922,11 @@ async def on_message(message):
                                     conn.commit()
                                     await watch_logs(message.server, '**{} is now being watched!**'.format(member_mentions.mention))
             
+
+
+        if message.content.startswith('.update'):
+            unknown_command = False
+            await client.send_message(message.channel, 'Tracer is currently writing a new permission based system for commands!')
             
         if message.content.startswith('.help'): # HELP COMMAND - TEMPORARY! DO. NOT. JUDGE.
             unknown_command = False
@@ -897,6 +938,7 @@ async def on_message(message):
                 response +=     '\n: **.members** - Displays the number of users in this Discord server.'
                 response +=     '\n: **.servers** - Displays the number of Discord servers/guilds that this bot is in.'
                 response +=     '\n: **.json** - Only usuable in Private Messages. Returns requested information.'
+                response +=     '\n: **.updates** - Displays bot rewrite updates!'
                 if muteMember or admin:
                     response += '\n\n: **.allow** - Allows a user to send a message, ignoring the language filter. Timeout is 60 seconds.'
                     response += '\n: **.mention** - Mention a given user.'
@@ -918,7 +960,9 @@ async def on_message(message):
                 await client.send_message(message.channel, response)
             elif len(args) > 1: # SYNTAX STUFF
                 response = None
-                if args[1] == 'members':
+                if args[1] == 'update':
+                    response = ': **.updates** - Displays bot rewrite updates!'
+                elif args[1] == 'members':
                     response = ': **.members** - Displays the number of users in this Discord server.'
                 elif args[1] == 'servers':
                     response = '\n: **.servers** - Displays the number of Discord servers/guilds that this bot is in. '
@@ -1004,7 +1048,11 @@ async def on_message(message):
                         mem.execute("INSERT INTO bypass VALUES (?, ?, '1')", (msg.server.id, members.id, ))
                         con.commit()
                         #log('Before')
-                        await client.delete_message(message)
+                        try:
+                            await client.delete_message(message)
+                        except discord.errors.Forbidden:
+                            pass
+                        #await client.delete_message(message)
                         await client.wait_for_message(timeout=60, author=members)
                         #log('After')
                         url = None
@@ -1041,7 +1089,7 @@ async def on_message(message):
             unknown_command = False
             if message.author.id == '85702178525704192' or message.author.id == '227161120069124096' or message.author.id == '173324987665612802' or message.author.id == '172846477683458049':
                 await client.change_presence(status=discord.Status.do_not_disturb)
-                log('> Failsafe Mode: {}, {}, Failsafe Active.'.format(client.user.name, client.user.id))
+                log(f'{tracers.colors.strong.red}> Failsafe Mode: {tracers.colors.strong.yellow}{client.user.name}, {tracers.colors.strong.cyan}{client.user.id}, {tracers.colors.strong.red}Failsafe Active.')
                 failsafe = True
         if message.content.startswith('.addswear '): # ADD SWEAR COMMAND
             if message.author.bot == False:
@@ -1141,8 +1189,11 @@ async def on_message(message):
             if muteMember:
                 msg = message.content[len('.restart'):]
                 await client.send_message(message.channel, '{} is restarting{}.'.format(client.user.name, msg))
-                log('> Manual Restart: {}, {}, Restarting.'.format(client.user.name, client.user.id))
-                await client.delete_message(message)
+                log(f'{tracers.colors.strong.red}> Manual Restart: {tracers.colors.strong.yellow}{client.user.name}, {tracers.colors.strong.cyan}{client.user.id}, {tracers.colors.strong.magenta}Restarting.')
+                try:
+                    await client.delete_message(message)
+                except discord.errors.Forbidden:
+                    pass
                 unknown_command = False
                 await client.close()
             else:
@@ -1156,15 +1207,18 @@ async def on_message(message):
             unknown_command = False
             
         swearEvent = False
-        if admin == False and message.author.bot == False: # START OF SWEAR PROTECTION
+        if admin == False and message.author.bot == False and muteMember == False: # START OF SWEAR PROTECTION
         #if message.author.bot == False: # START OF SWEAR PROTECTION
-            offenceTime = await swear_filter(message.server.id, message.content, message.author.id, message)
+            offenceTime, swears = await swear_filter(message.server.id, message.content, message.author.id, message)
             if offenceTime > 0:
                 swearEvent = True
                 if offenceTime >= 3:
                     member = message.server.get_member('344569392572530690') # ECHO
                     if member != None and member.status != discord.Status.offline: # IF OFFLINE
                         await client.send_message(message.channel, '!mute {} {}'.format(offenceTime, message.author.mention))
+                censor_channel = discord.utils.get(message.server.channels, name='censor-log')
+                if censor_channel != None:
+                    await client.send_message(censor_channel, '{} swore in {}, said {}totalling in {} offences.'.format(message.author.mention, message.channel.mention, swears, offenceTime))
 
 
         #if muteMember == False and message.author.bot == False: # START OF SPAM PROTECTION
@@ -1177,13 +1231,26 @@ async def on_message(message):
                 blakn = True
             elif message.content.startswith('.restart'):
                 if muteMember == False:
-                    await client.delete_message(message)
+                    try:
+                        await client.delete_message(message)
+                    except discord.errors.Forbidden:
+                        pass
+            elif message.content.startswith('.internal'):
+                blakn = True
+            elif message.content.startswith('.log'):
+                blakn = True
             elif message.content.startswith('..'):
                blakn = True
             else:
-                await client.delete_message(message)
+                try:
+                    await client.delete_message(message)
+                except discord.errors.Forbidden:
+                    pass
         elif swearEvent:
-            await client.delete_message(message)
+            try:
+                await client.delete_message(message)
+            except discord.errors.Forbidden:
+                pass
 
 # START
 try:
@@ -1199,16 +1266,6 @@ except discord.errors.LoginFailure as e:
     log('discord.errors.LoginFailure has occured. Please check your login token')
     log('SESSION HAS BEEN TERMINATED')
     client.close()
-
-
-
-
-
-
-
-
-
-
 
 
 
