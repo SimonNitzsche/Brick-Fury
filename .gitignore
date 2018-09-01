@@ -48,6 +48,8 @@ Temporary Items
 
 # Temporary/Development files
 Dev/
+Loggerbot/
+logger.sqlite
 fury.sqlite
 testing.txt
 settings.json

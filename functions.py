@@ -1,3 +1,75 @@
+class logger:
+    def log(text):
+        import time
+        time_log = time.strftime("%X", time.localtime(time.time()))
+        print(f'{tracers.colors.strong.green}[{time_log}] {text}{tracers.colors.reset}')
+
+#class permissions:
+   
+class json:
+    global file
+    file = 'settings.json'
+    def reader(data_type):
+        import os.path
+        import json
+        import time
+        global exists
+        global data
+        global token
+        exists = os.path.isfile(file)
+
+        if exists == False:
+            time_log = time.strftime("%X", time.localtime(time.time()))
+            token = input("[{}] What is the bot's login token? ".format(time_log))
+            json_token = json.dumps({'token': token})
+            with open(file, 'w') as json_file:  
+                json.dump(json_token, json_file)
+            exists = os.path.isfile(file)
+
+        if exists:    
+            with open(file) as json_file:
+                data = json.load(json_file)
+            arg = json.loads(data)
+            args = [x for x in arg] # PARSE ARGUMENTS
+            for x in args:
+                if data_type == 'login':
+                    if x == 'token':
+                        token = arg[x]
+                        return token;
+                else:
+                    if data_type == x:
+                        response = arg[x]
+                        return response;
+
+            from functions import json
+        raise ValueError(f'Could not find data type "{data_type}" in json file', data_type)
+
+    def write(data_type, value):
+        import json
+        with open(file) as json_file:
+            data = json.load(json_file)
+        dump = {data_type: value}
+        data = json.loads(data)
+        data.update(dump)
+        data = str(data).replace('\'', '"')
+        with open(file, 'w') as json_file:
+            json.dump(data, json_file)
+
+    def update(data_type, value):
+        import json
+        with open(file) as json_file:
+            data = json.load(json_file)
+        dump = {data_type: value}
+        data = json.loads(data)
+        args = [x for x in data] # PARSE ARGUMENTS
+        for x in args:
+            if data_type == x:
+                data[f'{data_type}'] = value
+        data = str(data).replace('\'', '"')
+        with open(file, 'w') as json_file:
+            json.dump(data, json_file)
+            
+            
 class tracers:
     class colors:
         reset = '\033[0m'
@@ -50,4 +122,5 @@ class tracers:
                 magenta = '\033[105m'
                 cyan = '\033[106m'
                 white = '\033[107m'
-        
+
+

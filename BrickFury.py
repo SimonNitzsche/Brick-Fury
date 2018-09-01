@@ -1,7 +1,13 @@
+#   __________        .__        __     ___________                   
+#   \______   \_______|__| ____ |  | __ \_   _____/_ _________ ___.__.
+#    |    |  _/\_  __ \  |/ ___\|  |/ /  |    __)|  |  \_  __ <   |  |
+#    |    |   \ |  | \/  \  \___|    <   |     \ |  |  /|  | \/\___  |
+#    |______  / |__|  |__|\___  >__|_ \  \___  / |____/ |__|   / ____|
+#           \/                \/     \/      \/                \/     
+
 import discord
 from discord.ext import commands
 import sqlite3
-import json
 import time
 import pytesseract
 import io
@@ -39,7 +45,11 @@ fury.execute('''CREATE TABLE IF NOT EXISTS rsvp
 #fury.execute('''CREATE TABLE IF NOT EXISTS reactions
 #             (messageid bigint, userid bigint, reacted bit)''') # REACTION CHECK
 
+fury.execute('''CREATE TABLE IF NOT EXISTS perms
+             (serverid bigint, userid bigint, perm list)''') # PERMS
 
+fury.execute('''CREATE TABLE IF NOT EXISTS commands
+             (count int, command text, description text, number int, access text)''') # COMMANDS
 
 con = sqlite3.connect(':memory:')
 #con.isolation_level = None
@@ -52,7 +62,16 @@ mem.execute('''CREATE TABLE IF NOT EXISTS progress
 mem.execute('''CREATE TABLE IF NOT EXISTS raffle
              (serverid bigint, userid bigint)''') # RAFFLE
 
+
+logging_con = sqlite3.connect('logger.sqlite')
+logging = logging_con.cursor()
+
+logging.execute('''CREATE TABLE IF NOT EXISTS replace
+             (find text, replacement text)''')
+
 client = discord.Client()
+players={}
+voices={}
 #appinfo = discord.AppInfo()
 #client.change_presence(status=dnd)
 failsafe = False
@@ -62,23 +81,13 @@ file = 'settings.json'
 def log(text):
     import time
     time_log = time.strftime("%X", time.localtime(time.time()))
-    #print('[{}] {}'.format(time_log, text))
-    #print(tracers.colors.OKGREEN + f'[{time_log}] ' + tracers.colors.ENDC + f'{text}')
     print(f'{tracers.colors.strong.green}[{time_log}] {text}{tracers.colors.reset}')
-    #try:
-    #    log_server = client.get_server('227127903249367041')
-    #    log_channel = discord.utils.get(log_server.channels, name='bot-logs')
-    #    client.send_message(log_channel, text)
-    #except discord.DiscordException:
-    #    pass
 
 async def swear_filter(serverid, message, userid, message_data):
     global bypass
     bypass = None
     for bypass_state in mem.execute("SELECT bypass_state FROM bypass WHERE serverid = ? AND userid = ?", (serverid, userid, )):
         bypass = bypass_state[0]
-        #log(bypass_state)
-    #log(bypass)
     if bypass == 1:
         return 0;
     else:
@@ -87,45 +96,34 @@ async def swear_filter(serverid, message, userid, message_data):
             try:
                 text = py_tesseract(message_data, 'message')
             except OSError:
-                #await client.change_presence(game=discord.Game(name='LEGO Universe'))
                 pass
 
-        #await client.change_presence(game=discord.Game(name='LEGO Universe'))
         if text != None:
             message += '\n'
             message += '\n'
             message += text
 
-            log_server = client.get_server('227127903249367041')
+            from functions import json
+            try:
+                log_server = client.get_server(json.reader('main_server'))
+            except ValueError as err:
+                json.write('main_server', '480876512120143882')
             log_channel = discord.utils.get(log_server.channels, name='bot-logs')
             await client.send_message(log_channel, '[IMAGE TEXT] {}'.format(message))
-            
-            #log(message)
-        #censor_server = client.get_server(serverid)
-        #censor_member = censor_server.get_member(userid)
 
         swears = ''
         offenceTime = 0
-        #swearCounter = 0
         msg = message.lower()
         swearExceptionCounter = 0
-        #censor_channel = discord.utils.get(censor_server.channels, name='censor-log')
-        #msg = ''.join(e for e in message.lower() if e.isalnum())
+
         for exception in fury.execute("SELECT phrase FROM swearexception WHERE serverid = ?", (serverid, )):
             offenceTime -= msg.count('{}'.format(exception[0]))
             swearExceptionCounter += msg.count('{}'.format(exception[0]))
-            #if msg.count('{}'.format(exception[0])) > 0:
                 
         for phrase in fury.execute("SELECT phrase FROM swear WHERE serverid = ?", (serverid, )):
             offenceTime += msg.count('{}'.format(phrase[0]))
-            #swearCounter += msg.count('{}'.format(phrase[0]))
             if msg.count('{}'.format(phrase[0])) > 0:
                 swears += '{}, '.format(phrase[0])
-
-        #if offenceTime > 0:
-        #    watch_server = client.get_server(serverid)
-        #    watch_member = watch_server.get_member(userid)
-        #    await watch(watch_server, watch_member, 'swear', message)
         return offenceTime, swears
 
 def py_tesseract(message, mode):
@@ -133,6 +131,7 @@ def py_tesseract(message, mode):
         if message != None:
             if message.server != None: # PY TESSERACT
                 url = None
+                import json
                 for attach in message.attachments:
                     #log (attach)
                     str_attach = str(attach)
@@ -187,38 +186,9 @@ def py_tesseract(message, mode):
         return None
     return None
 
-
 async def permission_response(message):
     await client.send_message(message.channel, 'Sorry {}, you do not have permission to run that command!'.format(message.author.mention))
     return;
-
-def json_reader(data_type): # JSON READ / WRITE
-    import os.path
-    global exists
-    global data
-    global token
-    #file = 'settings.json'
-    exists = os.path.isfile(file)
-
-    if exists == False:
-        time_log = time.strftime("%X", time.localtime(time.time()))
-        token = input("[{}] What is the bot's login token? ".format(time_log))
-        json_token = json.dumps({"token": token})
-        with open(file, 'w') as json_file:  
-            json.dump(json_token, json_file)
-        exists = os.path.isfile(file)
-
-    if exists:    
-        with open(file) as json_file:  
-            data = json.load(json_file)
-        arg = json.loads(data)
-        args = [x for x in arg] # PARSE ARGUMENTS
-        if args[0] == 'token':
-            if data_type == 'login':
-                token = arg[args[0]]
-                #log('> Attempting Login: Token {}'.format(token))
-                log(f'{tracers.colors.cyan}> Attempting Login.')
-                return token;
 
 async def checks(server, user, action, data):
     channel = discord.utils.get(server.channels, name='logs')
@@ -277,14 +247,13 @@ async def audit(server, user, action, data):
             if user.permissions != data.permissions:
                 for new, old in zip(user.permissions, data.permissions):
                     if new[1] != old[1]:
-                        await client.send_message(channel, '[{}] [ROLE] [PERM_UPDATE] {} from {} to {}'.format(user.name, new[0], new[1], old[1]))
-                    #await client.send_message(channel, '[{}] [ROLE] [PERM] [UPDATE]'.format(user.name))
+                        await client.send_message(channel, '[{}] [ROLE] [PERM_UPDATE] {} from {} to {}'.format(user.name, new[0], old[1], new[1]))
             if user.position != data.position:
                 await client.send_message(channel, '[{}] [ROLE] [POS] {} to {}'.format(user.name, data.position, user.position))
             if user.hoist != data.hoist:
                 await client.send_message(channel, '[{}] [ROLE] [HOIST] {} to {}'.format(user.name, data.hoist, user.hoist))
             if user.color != data.color:
-                await client.send_message(channel, '[{}] [ROLE] [COLOR] {} to {}'.format(user.name, data.to_tuple(), user.to_tuple()))
+                await client.send_message(channel, '[{}] [ROLE] [COLOR] {} to {}'.format(user.name, data.color.to_tuple(), user.color.to_tuple()))
             if user.mentionable != data.mentionable:
                 await client.send_message(channel, '[{}] [ROLE] [MENTION] {} to {}'.format(user.name, data.mentionable, user.mentionable))
             
@@ -307,7 +276,9 @@ async def watch(server, user, action, data):
                 url = attachment_info['url']
             content = data.content
             for members in data.mentions:
-                content = data.content.replace(members.mention , '@{}#{}'.format(members.name, members.discriminator))
+                content = content.replace(members.mention, 'f@{members.name}#{members.discriminator}')
+            content = content.replace('@everyone', '@​everyone')
+            content = content.replace('@here', '@​here')
             if url == None:
                 await client.send_message(channel, '[{}] [{}] {}'.format(data.channel, user.mention, data.content))
             else:
@@ -322,7 +293,9 @@ async def watch(server, user, action, data):
                 url = attachment_info['url']
             content = data.content
             for members in data.mentions:
-                content = data.content.replace(members.mention , '@{}#{}'.format(members.name, members.discriminator))
+                content = content.replace(members.mention, 'f@{members.name}#{members.discriminator}')
+            content = content.replace('@everyone', '@​everyone')
+            content = content.replace('@here', '@​here')
             if url == None:
                 await client.send_message(channel, '[{}] [{}] [edited] {}'.format(data.channel, user.mention, data.content))
             else:
@@ -357,6 +330,10 @@ async def watch(server, user, action, data):
             await client.send_message(channel, '[{}#{}] [USER UNBANNED]'.format(user.name, user.discriminator))
 
 def make_printable(text):
+    text_list = list(text)
+    for x in range(len(text_list)):
+        for get in logging.execute("SELECT replacement FROM replace WHERE find = ?", (text_list[x], )):
+            text = text.replace(text_list[x], get[0])
     return ''.join(i for i in text if ord(i)<128)
 
 def is_number(s):
@@ -378,10 +355,37 @@ async def watch_logs(server, message):
 #    log_channel = discord.utils.get(log_server.channels, name='bot-logs')
 #    await client.send_message(log_channel, 'ERROR: Event {} with args {} and kwargs {}'.format(event, args, kwargs))
 
+async def status_update():
+    from functions import json
+    nurl = None
+    ngame = None
+    if json.reader('url') != 'None':
+        nurl = json.reader('url')
+    if json.reader('game') != 'None':
+        ngame = json.reader('game')
+    if is_number(json.reader('type')) == False:
+        json.update('type', '0')
+    await client.change_presence(game=discord.Game(name=ngame, type=int(json.reader('type')), url=nurl), status=json.reader('status'))
+
 @client.event
 async def on_ready():
+    from functions import json
     log(f'{tracers.colors.cyan}> Logged in: {tracers.colors.strong.yellow}{client.user.name}, {tracers.colors.strong.cyan}{client.user.id}, {tracers.colors.strong.magenta}Initiated.')
-    await client.change_presence(game=discord.Game(name='LEGO Universe'))
+
+    for x in range(100):
+        try:
+            await status_update()
+            break
+        except ValueError as err:
+            if err.args[1] == 'game':
+                json.write('game', 'LEGO Universe')
+            elif err.args[1] == 'type':
+                json.write('type', '0')
+            elif err.args[1] == 'url':
+                json.write('url', 'None')
+            elif err.args[1] == 'status':
+                json.write('status', 'online')
+
 
 #@client.event
 #async def on_member_join(member):
@@ -508,6 +512,7 @@ async def on_message_edit(message_before, message):
                 member = message.server.get_member('344569392572530690') # ECHO 
                 if member == None or member.status == discord.Status.offline: # IF OFFLINE
                     url = None
+                    import json
                     for attach in message.attachments:
                         str_attach = str(attach)
                         attach_replace = str_attach.replace('\'', '"')
@@ -515,18 +520,21 @@ async def on_message_edit(message_before, message):
                         url = attachment_info['url']
                     content = message.content
                     for members in message.mentions:
-                        content = message.content.replace(members.mention , '@{}#{}'.format(members.name, members.discriminator))
+                        content = content.replace(members.mention, 'f@{members.name}#{members.discriminator}')
+                    content = content.replace('@everyone', '@​everyone')
+                    content = content.replace('@here', '@​here')
                     if url == None:
                         await client.send_message(channel, '[{}] [{}] [edited] {}'.format(message.channel.name, message.author.name, content))
                     else:
                         await client.send_message(channel, '[{}] [{}] [edited] {} {}'.format(message.channel.name, message.author.name, content, url))
 
+    
         swearEvent = False
         admin = message.author.server_permissions.administrator
         muteMember = message.author.server_permissions.mute_members
         if admin == False and message.author.bot == False and muteMember == False: # START OF SWEAR PROTECTION
         #if message.author.bot == False: # START OF SWEAR PROTECTION
-            offenceTime, swears = await swear_filter(message.server.id, message.content, message.author.id, message)
+            offenceTime, swears = await swear_filter(message.server.id, make_printable(message.content), message.author.id, message)
             if offenceTime > 0:
                 try:
                     await client.delete_message(message)
@@ -552,22 +560,88 @@ async def on_message_edit(message_before, message):
             mem.execute("DELETE FROM bypass WHERE serverid = ? AND userid = ?;", (message.server.id, members.id, ))
             con.commit()
 
-#@bot.command(description='For when you wanna settle the score some other way')
-#async def mention(self, ctx):
-#    counter = 0
-#    #x = message.server.members
-#    x = ctx.server.members
-#    for member in x:
-#        counter += 1
-#    await bot.say('I am currently defending the {} members that are in this guild.'.format(counter))
-    #await client.send_message(message.channel, 'I am currently defending the {} members that are in this guild.'.format(counter))
-    #unknown_command = False
+    if message.server == None: # PRIVATE MESSAGES
+        #log('{}'.format(message.channel.user))
+        from functions import json
+        try:
+            log_server = client.get_server(json.reader('main_server'))
+        except ValueError as err:
+            json.write('main_server', '480876512120143882')
+        log_channel = discord.utils.get(log_server.channels, name='bot-pm-log')
+        #log_member = log_server.get_member(message.channel)
+        url = None
+        import json
+        for attach in message.attachments:
+            str_attach = str(attach)
+            attach_replace = str_attach.replace('\'', '"')
+            attachment_info = json.loads(attach_replace)
+            url = attachment_info['url']
+        content = message.content
+        for members in message.mentions:
+            content = message.content.replace(members.mention , '@{}#{}'.format(members.name, members.discriminator))
+        if message.author != client.user:
+            if url == None:
+                await client.send_message(log_channel, '[PM] [{}] -> [{}] {}'.format(message.channel.user, client.user, content))
+            else:
+                await client.send_message(log_channel, '[PM] [{}] -> [{}] {} {}'.format(message.channel.user, client.user, content, url))
+        elif message.author == client.user:
+            if url == None:
+                await client.send_message(log_channel, '[PM] [{}] -> [{}] {}'.format(client.user, message.channel.user, content))
+            else:
+                await client.send_message(log_channel, '[PM] [{}] -> [{}] {} {}'.format(client.user, message.channel.user, content, url))
+
+def perms(message):
+    if message.server == None:
+        return True
+    else:
+        if True != True:
+            args = message.content.split(' ')
+            com_arg = args[0]
+            command = com_arg[len('.'):]
+            perms = None
+            for perm_list in fury.execute("SELECT perm FROM perms WHERE serverid =? AND userid =?", (message.server.id, message.author.id, )):
+                perms = perm_list[0]
+            if perms != None:
+                perms = perms.split(',')
+                com = False
+                for x in range(len(perms)):
+                    if command == perms[x]:
+                        com = True
+                        return True
+                if com == False:
+                    #state = None
+                    for state_list in fury.execute("SELECT default_state FROM commands WHERE command =?", (command, )):
+                        if state_list[0] == 'false':
+                            return False
+                        elif state_list[0] == 'true':
+                            return True
+            else:
+                return False
+
+                #state = state_list[0]
+            #return
+            #import re
+            #com_name = list(args[0])
+            #if re.match('[a-zA-Z]', com_name[1]) == False:
+            #    await client.send_message(message.channel, 'Sorry {}, you do not have permission to run that command!'.format(message.author.mention))
+            #    return False
+            #else:
+            #    return None
+
+        if message.author.server_permissions.administrator != True:
+            return False
+        elif message.content.startswith('.ping'):
+            if message.author.server_permissions.mute_members:
+                return True
+            else:
+                return False
+        else:
+            return True
 
 @client.event
 async def on_message(message):
     global failsafe
-    global ignore        
-    
+    global ignore
     if message.server != None: # SERVER LOG
         await watch(message.server, message.author, 'message', message)
         channel = discord.utils.get(message.server.channels, name='logs') #
@@ -576,6 +650,7 @@ async def on_message(message):
                 member = message.server.get_member('344569392572530690') # ECHO
                 if member == None or member.status == discord.Status.offline: # IF OFFLINE
                     url = None
+                    import json
                     for attach in message.attachments:
                         str_attach = str(attach)
                         attach_replace = str_attach.replace('\'', '"')
@@ -583,7 +658,9 @@ async def on_message(message):
                         url = attachment_info['url']
                     content = message.content
                     for members in message.mentions:
-                        content = message.content.replace(members.mention , '@{}#{}'.format(members.name, members.discriminator))
+                        content = content.replace(members.mention, 'f@{members.name}#{members.discriminator}')
+                    content = content.replace('@everyone', '@​everyone')
+                    content = content.replace('@here', '@​here')
                     if url == None:
                         await client.send_message(channel, '[{}] [{}] {}'.format(message.channel.name, message.author.name, content))
                     else:
@@ -591,10 +668,15 @@ async def on_message(message):
     
     if message.server == None: # PRIVATE MESSAGES
         #log('{}'.format(message.channel.user))
-        log_server = client.get_server('227127903249367041')
+        from functions import json
+        try:
+            log_server = client.get_server(json.reader('main_server'))
+        except ValueError as err:
+            json.write('main_server', '480876512120143882')
         log_channel = discord.utils.get(log_server.channels, name='bot-pm-log')
         #log_member = log_server.get_member(message.channel)
         url = None
+        import json
         for attach in message.attachments:
             str_attach = str(attach)
             attach_replace = str_attach.replace('\'', '"')
@@ -622,6 +704,7 @@ async def on_message(message):
                     log(f'{tracers.colors.strong.red}> Manual PM Restart: {tracers.colors.strong.yellow}{client.user.name}, {tracers.colors.strong.cyan}{client.user.id}, {tracers.colors.strong.magenta}Restarting.')
                     await client.close()
             if message.content.startswith('.json '): # JSON CODES
+                import json
                 com = message.content[len('.json '):]
                 arg = json.loads(com)
                 args = [x for x in arg] # PARSE ARGUMENTS
@@ -646,46 +729,125 @@ async def on_message(message):
                 else: # SERVER
                     await client.send_message(message.channel, json.dumps({"serverid": arg[args[0]], "messageid": arg[args[1]], "type": 'invalid', "text": 0}))
 
-    elif message.server != None and failsafe == False: # SERVER MESSAGES
-        muteMember = message.author.server_permissions.mute_members
-        admin = message.author.server_permissions.administrator
-        unknown_command = False
-        if message.content.startswith('.'):
-            unknown_command = True
-        if message.author.id == client.user.id:
-            unknown_command = False
+    # GENERAL COMMANDS
+    args = message.content.split(' ')
+    if args[0] == '.ping':
+        if perms(message):
+            if len(args) > 1:
+                if args[1] == 'discord':
+                    from datetime import datetime
+                    datetime.utcnow()
+                    time = message.timestamp
+                    get_utc = str(datetime.utcnow()).split(':')
+                    get_time = str(time).split(':')
+                    new_utc = float(get_utc[2]) + (float(get_utc[1]) * 60)
+                    new_time = float(get_time[2]) + (float(get_time[1]) * 60)
+                    act_time = new_time - new_utc
+                    await client.send_message(message.channel, 'Pong! Approximate Discord latency is {} seconds!'.format(abs(act_time)))
+            else:
+                import time
+                before = time.monotonic()
+                msg = await client.send_message(message.channel, 'Pong!')                
+                ping = round((time.monotonic() - before) * 1000)
+                await client.edit_message(msg, f'Pong! `{ping}ms`')
 
-        if message.content.lower().startswith('.ping'):
-            unknown_command = False
-            if muteMember:
-                unknown_command = False
-                from datetime import datetime
-                datetime.utcnow()
-                time = message.timestamp
-                #log('{} and {}'.format(datetime.utcnow(), time))
-                get_utc = str(datetime.utcnow()).split(':')
-                get_time = str(time).split(':')
-                new_utc = float(get_utc[2]) + (float(get_utc[1]) * 60)
-                new_time = float(get_time[2]) + (float(get_time[1]) * 60)
-                #log(get_utc)
-                #log(get_time)
-                act_time = new_utc - new_time
-                #log(abs(act_time))
-                await client.send_message(message.channel, 'Pong! Approximate Discord latency is {} seconds!'.format(abs(act_time)))
+
+    if message.server != None and failsafe == False: # SERVER MESSAGES
+        admin = message.author.server_permissions.administrator
+        muteMember = message.author.server_permissions.mute_members
+        #args = message.content.split(' ')
+        if args[0] == '.run':
+            await client.delete_message(message)
+            appinfo = await client.application_info()
+            if appinfo.owner.id == message.author.id:
+                if args[1] == 'internal':
+                    update = message.content[len(f'{args[0]} {args[1]} {args[2]} '):]
+                    from functions import json
+                    if args[2] == 'status':
+                        json.update('status', args[3])
+                        await status_update()
+                    elif args[2] == 'game':
+                        json.update('game', update)
+                        await status_update()
+                    elif args[2] == 'type':
+                        json.update('type', args[3])
+                        await status_update()
+                    elif args[2] == 'url':
+                        json.update('url', args[3])
+                        await status_update()
             else:
                 await permission_response(message)
-            
 
-        if message.content.lower().startswith('.rsvp'):
-            unknown_command = False
-            args = message.content.split(' ')
+
+        elif args[0] == '.embed':
+            if muteMember:
+                blank = True
+            else:
+                await permission_response(message)
+
+        elif args[0] == '.perm':
+            #if perms(message):
+            appinfo = await client.application_info()
+            if appinfo.owner.id == message.author.id:
+                if args[1] == 'toggle':
+                    found = False
+                    perm = None
+                    for perm_list in fury.execute("SELECT perm FROM perms WHERE serverid =? AND userid =?", (message.server.id, message.channel.id, )):
+                        perm = perm_list[0]
+                    if perm == None:
+                        for comm in fury.execute("SELECT command FROM commands"):
+                            if args[2] == comm[0]:
+                                fury.execute("INSERT INTO perms VALUES (?, ?, ?)", (message.server.id, message.author.id, args[2], ))
+                                conn.commit()
+                    if perm != None:
+                        for x in len(perm):
+                            if args[2] == perm[x]: # REMOVE FROM LIST
+                                comlist = ''
+                                for x in range(len(perm)):
+                                    if args[2] != perm[x]:
+                                        comlist += '{}, '.format(member.mention)
+                                fury.execute("UPDATE perms SET perm = ? WHERE serverid = ? AND userid = ?", (comlist, message.server.id, message.channel.id, ))
+                            #for comm in fury.execute("SELECT command FROM commands"):
+                                #if args[2] == comm[0]
+                    perm = perm.split(',')
+                    for x in range(len(perm)):
+                        log(perm[x])
+                        
+
+        elif args[0] == '.clear':
+            await client.delete_message(message)
+            if muteMember:
+                if len(args) > 1:
+                    if is_number(args[1]):
+                        if int(args[1]) < 500:
+                            try:
+                                await client.purge_from(message.channel, limit=int(args[1]))
+                                await client.send_message(message.channel, f'Purged {args[1]} messages.')
+                            except discord.errors.Forbidden:
+                                await client.send_message(message.channel, f'Unable to purge {args[1]} messages. Inproper permissions.')
+                            except discord.errors.HTTPException:
+                                await client.send_message(message.channel, f'Unable to purge {args[1]} messages. HTTPException occured.')
+                            except discord.errors.NotFound:
+                                pass
+                        else:
+                            await client.send_message(message.channel, f'Unable to purge {args[1]} messages. Cannot purge more than 500 messages.')
+                    else:
+                        await client.send_message(message.channel, f'Unable to purge messages. Argument 1 is not a number.')
+                else:
+                    await client.send_message(message.channel, f'Unable to purge messages. Argument 1 not specified.')
+            else:
+                await permission_response(message)
+           
+                #fury.execute("DELETE FROM perms WHERE serverid = ? AND userid = ?;", (message.server.id, member_mentions.id, ))
+                #conn.commit()
+        elif args[0].lower() == '.rsvp':
             if len(args) > 1:
                 if args[1] == 'c':
                     if muteMember:
                         if len(args) > 2:
                             import time
                             name = message.content[len('{} {} '.format(args[0], args[1])):]
-                            fury.execute("INSERT INTO rsvp VALUES (?, ?, ?, ?, ?)", (message.server.id, message.channel.id, name, int(time.time()), None, ))
+                            fury.execute("INSERT INTO rsvp VALUES (?, ?, ?, ?, ?, ?)", (message.server.id, message.channel.id, name, int(time.time()), None, True))
                             conn.commit()
                             await client.send_message(message.channel, '{} created {} RSVP.'.format(message.author.mention, name))
                     else:
@@ -707,55 +869,52 @@ async def on_message(message):
                                 if x == (len(uargs) - 1):
                                     ulist += 'and {}.'.format(member.mention)
                                 else: 
-                                    ulist += '{}, '.format(member.mention)
-                            await client.send_message(message.channel, '{}'.format(ulist))
-                          
-
-            else:
-                users = None
-                name = None
-                for user_list in fury.execute("SELECT users, name FROM rsvp WHERE serverid =? AND channelid =? ORDER BY timestamp DESC", (message.server.id, message.channel.id, )):
+                                    ulist += '{}, .'.format(member.mention)
+                for user_list in fury.execute("SELECT users, name, enabled FROM rsvp WHERE serverid =? AND channelid =? ORDER BY timestamp DESC", (message.server.id, message.channel.id, )):
+                    enabled = user_list[2]
                     users = user_list[0]
                     name = user_list[1]
                     break
-
                 ulist = ''
                 entered = None
-                if users != None:
-                    uargs = users.split(',')
-                    for x in range(len(uargs)):
-                        if uargs[x] == message.author.id:
-                            entered = True
-                        ulist += '{},'.format(uargs[x])
-                if entered == None:
-                    if name != None:
-                        ulist += '{}'.format(message.author.id)
-                        fury.execute("UPDATE rsvp SET users = ? WHERE serverid = ? AND channelid = ? AND name = ?", (ulist, message.server.id, message.channel.id, name, ))
-                        conn.commit()
-                        await client.send_message(message.channel, '{} responded to the {} RSVP.'.format(message.author.mention, name))
+                if enabled == True:
+                    if users != None:
+                        uargs = users.split(',')
+                        for x in range(len(uargs)):
+                            if uargs[x] == message.author.id:
+                                entered = True
+                            ulist += '{},'.format(uargs[x])
+                    if entered == None:
+                        if name != None:
+                            ulist += '{}'.format(message.author.id)
+                            fury.execute("UPDATE rsvp SET users = ? WHERE serverid = ? AND channelid = ? AND name = ?", (ulist, message.server.id, message.channel.id, name, ))
+                            conn.commit()
+                            await client.send_message(message.channel, '{} responded to the {} RSVP.'.format(message.author.mention, name))
+                else:
+                    await client.send_message(message.channel, 'Sorry {}, but the {} RSVP is currently closed.'.format(message.author.mention, name))
                 
 
-                        
+            await client.delete_message(message)
 
-        if message.content.startswith('.comm'):
-            unknown_command = False
-            args = message.content.split(' ')
-            if admin:
-                if len(args) > 1:
-                    if args[1] == 'c' or args[1] == 'create':
-                        await client.send_message(message.channel, 'Command create called.')
-                        if len(args) > 2:
-                            await client.send_message(message.channel, 'Command name (arg2) specified as \'{}\'.'.format(args[2]))
-                            if len(args) > 3 and is_number(args[3]):
-                                await client.send_message(message.channel, 'Command argument count (arg3) specified as \'{}\'.'.format(args[3]))
-                                if len(args) > 4:
-                                    log('end')
-                        else:
-                            await client.send_message(message.channel, 'There is not enough arguments!')
-                    else:
-                        await client.send_message(message.channel, 'Invalid argument!')
-            else:
-                await permission_response(message)
+        #if message.content.startswith('.comm'):
+        #    
+        #    args = message.content.split(' ')
+        #    if perms(message):
+        #        if len(args) > 1:
+        #            if args[1] == 'c' or args[1] == 'create':
+        #                await client.send_message(message.channel, 'Command create called.')
+        #                if len(args) > 2:
+        #                    await client.send_message(message.channel, 'Command name (arg2) specified as \'{}\'.'.format(args[2]))
+        #                    if len(args) > 3 and is_number(args[3]):
+        #                        await client.send_message(message.channel, 'Command argument count (arg3) specified as \'{}\'.'.format(args[3]))
+        #                        if len(args) > 4:
+        #                            log('end')
+        #                else:
+        #                    await client.send_message(message.channel, 'There is not enough arguments!')
+        #            else:
+        #                await client.send_message(message.channel, 'Invalid argument!')
+        #    else:
+        #        await permission_response(message)
                 
                         
 
@@ -763,9 +922,8 @@ async def on_message(message):
             #(serverid bigint, ongoing bit)''') # RAFFLE IN PROGRESS
         #mem.execute('''CREATE TABLE IF NOT EXISTS raffle
             #(serverid bigint, userid bigint)''') # RAFFLE'
-
-        if message.content.startswith('.sort'):
-            unknown_command = False
+        
+        elif args[0] == '.sort':
             appinfo = await client.application_info()
             if appinfo.owner.id == message.author.id:
                 #inte = 0
@@ -789,17 +947,15 @@ async def on_message(message):
 
                 await client.send_message(message.channel, 'I sorted this server\'s swear list for you master. ')
 
+            await client.delete_message(message)
 
-
-        if message.content.startswith('.raffle'): # RAFFLE
-            unknown_command = False
+        elif args[0] == '.raffle': # RAFFLE
             ongoing = None
             for is_ongoing in mem.execute("SELECT ongoing FROM progress WHERE serverid = ?", (message.server.id, )):
                 ongoing = is_ongoing[0]
             entered = None
             for is_entered in mem.execute("SELECT userid FROM raffle WHERE serverid = ? AND userid = ?", (message.server.id, message.author.id, )):
                 entered = is_entered[0]
-            args = message.content.split(' ')
             if len(args) >= 2:
                 if muteMember:
                     if args[1] == 'create' or args[1] == 'c': # CREATE
@@ -866,11 +1022,9 @@ async def on_message(message):
                 #else:
                     #await client.send_message(message.channel, 'There\' currently no ongoing raffle {}!'.format(message.author.mention))
                     
-
-        if message.content.startswith('.random '): # RANDOM
-            unknown_command = False
+            await client.delete_message(message)
+        elif args[0] == '.random ': # RANDOM
             if muteMember:
-                args = message.content.split(' ')
                 if len(args) > 2:
                     if is_number(args[1]):
                         if (message.server.member_count/10) >= int(args[1]):
@@ -885,159 +1039,117 @@ async def on_message(message):
                                     count += 1
                         else:
                             await client.send_message(message.channel, 'The value you ented is invalid {}. You cannot randomly pick more than 10% of the server!'.format(message.author.mention))
-
+            await client.delete_message(message)
         
-        if message.content.startswith('.run'):
-            unknown_command = False
-            appinfo = await client.application_info()
-            if appinfo.owner.id == message.author.id:
-                #msg = message.content[len('.run '):]
-                args = message.content.split(' ')
-                if args[1] == 'internal':
-                    if args[2] == 'echo':
-                        await client.send_message(message.channel, 'Comm not complete! Could not run internal command.')
+        #if message.content.startswith('.run'):
+        #    
+        #    appinfo = await client.application_info()
+        #    if appinfo.owner.id == message.author.id:
+        #        #msg = message.content[len('.run '):]
+        #        args = message.content.split(' ')
+        #        if args[1] == 'internal':
+        #            if args[2] == 'echo':
+        #                await client.send_message(message.channel, 'Comm not complete! Could not run internal command.')
                         
 
-        if message.content.startswith('.internal'):
-            unknown_command = False
+        elif message.content.startswith('.internal'):
+            blank = True
 
-        if message.content.startswith('.log'):
-            unknown_command = False        
+        elif message.content.startswith('.log'):
+            blank = True
 
-        if message.content.startswith('.test'):
-            unknown_command = False
+        elif args[0] == '.ping':
+            await client.delete_message(message)
+
+        elif message.content.startswith('.test'):
+            await client.delete_message(message)
             #log(f'{tracers.colors.strong.green}Testing')
 
-        if message.content.startswith('.oldtest'):
-            unknown_command = False
-            if admin:
-                msg = message.content[len('.oldtest'):]
-                args = msg.split(' ')
-                if len(args) > 0:
-                    if args[0] == 'add':
-                        if len(message.mentions) > 0:
-                            for member_mentions in message.mentions:
-                                if member_mentions.id != '399539809569472515' or member_mentions.id != '399777479423688705':
-                                    fury.execute("INSERT INTO watch VALUES (?, ?)", (message.server.id, member_mentions.id, ))
-                                    conn.commit()
-                                    await watch_logs(message.server, '**{} is now being watched!**'.format(member_mentions.mention))
+        #if message.content.startswith('.oldtest'):
+        #    
+        #    if admin:
+        #        msg = message.content[len('.oldtest'):]
+        #        args = msg.split(' ')
+        #        if len(args) > 0:
+        #            if args[0] == 'add':
+        #                if len(message.mentions) > 0:
+        #                    for member_mentions in message.mentions:
+        #                        if member_mentions.id != '399539809569472515' or member_mentions.id != '399777479423688705':
+        #                            fury.execute("INSERT INTO watch VALUES (?, ?)", (message.server.id, member_mentions.id, ))
+        #                            conn.commit()
+        #                            await watch_logs(message.server, '**{} is now being watched!**'.format(member_mentions.mention))
             
 
 
-        if message.content.startswith('.update'):
-            unknown_command = False
+        elif args[0] == 'updates':
             await client.send_message(message.channel, 'Tracer is currently writing a new permission based system for commands!')
-            
-        if message.content.startswith('.help'): # HELP COMMAND - TEMPORARY! DO. NOT. JUDGE.
-            unknown_command = False
-            msg = message.content[len('.help'):]
-            args = msg.split(' ')
-            if len(args) == 1: # COMMAND LIST
-                response =      ': ----------------------------------------------------------------------------------------------------'
-                response +=     '\n: Here are the commands available to you *{}*:'.format(message.author.mention)
-                response +=     '\n: **.members** - Displays the number of users in this Discord server.'
-                response +=     '\n: **.servers** - Displays the number of Discord servers/guilds that this bot is in.'
-                response +=     '\n: **.json** - Only usuable in Private Messages. Returns requested information.'
-                response +=     '\n: **.updates** - Displays bot rewrite updates!'
-                if muteMember or admin:
-                    response += '\n\n: **.allow** - Allows a user to send a message, ignoring the language filter. Timeout is 60 seconds.'
-                    response += '\n: **.mention** - Mention a given user.'
-                    response += '\n: **.say** - Make the bot say a message.'
-                    response += '\n: **.vote** - Finalizes a vote. Please see syntax.'
-                    response += '\n: **.poll** - Finalizes a poll. Please see syntax.'
-                    response += '\n: **.addreaction** - Add custom emoji reaction to a message.'
-                    response += '\n: **.random** - Picks a random member of this Discord.'
-                if admin:
-                    response += '\n\n: **.watch** - Watch somebody and report their every move to a channel.'
-                    response += '\n: **.addswear** - Add a word to the language filter.'
-                    response += '\n: **.removeswear** - Remove a word from the language filter.'
-                    response += '\n: **.addswearexception** - Add a word to the exception filter.'
-                    response += '\n: **.removeswearexception** - Remove a word from the exception filter.'
-                if message.author.id == '85702178525704192' or message.author.id == '227161120069124096' or message.author.id == '173324987665612802' or message.author.id == '172846477683458049':
-                    response += '\n\n: **.quit** - Put the bot into a lockdown state.'
-                    response += '\n: **.restart** - Restart the bot if it is in lockdown. PM Only.'
-                    response += '\n: **.restart** - Restart the bot.'
-                await client.send_message(message.channel, response)
-            elif len(args) > 1: # SYNTAX STUFF
-                response = None
-                if args[1] == 'update':
-                    response = ': **.updates** - Displays bot rewrite updates!'
-                elif args[1] == 'members':
-                    response = ': **.members** - Displays the number of users in this Discord server.'
-                elif args[1] == 'servers':
-                    response = '\n: **.servers** - Displays the number of Discord servers/guilds that this bot is in. '
-                elif args[1] == 'json':
-                    response = '\n: **.json** {"serverid": "*serverid*", "messageid": "*messageid*", "type": "*type*", "text": "*text*"}'
-                elif args[1] == 'allow':
-                    response = ': .allow {}'.format(message.author.mention)
-                elif args[1] == 'mention':
-                    response = ': **.mention** *{}*/*{}*'.format(message.author.mention, message.author.id)
-                elif args[1] == 'say':
-                    response = '\n: **.say** *Hello World*'
-                elif args[1] == 'vote':
-                    response = ': **Declare a vote:** *Vote to add Brick Fury to **{}**.*'.format(message.server.name)
-                    response += '\n: **Create the vote:** *.vote*'
-                elif args[1] == 'poll':
-                    response = ': **Declare a poll:** *Poll to add Brick Fury to **{}**.*'.format(message.server.name)
-                    response += '\n: :regional_indicator_a: `Yes`'
-                    response += '\n: :regional_indicator_b: `No`'
-                    response += '\n: :regional_indicator_c: `Of course! {} is awesome!`'.format(message.author)
-                    response += '\n: **Create the poll:** *.poll **3***'
-                elif args[1] == 'addreaction':
-                    emoji_server = client.get_server('323959784019591169') # JALUS Discord
-                    for y in emoji_server.emojis:
-                        if str(y) == '<:maude_will_find_you:343515988106674176>':
-                            response = '\n: **.addreaction** *{}* {}'.format(message.id, y)
-                elif args[1] == 'raffle':
-                    response = ': **.random** {} (number of users to pick)'.format(message.server.member_count/10)
-                elif args[1] == 'watch':
-                    response = ': **.watch** add/remove {}'.format(message.author.mention)
-                elif args[1] == 'addswear':
-                    response = ': **.addswear** {}'.format(message.author.name)
-                elif args[1] == 'removeswear':
-                    response = ': **.removeswear** {}'.format(message.author.name)
-                elif args[1] == 'addswearexception':
-                    response = ': **.addswear** {}'.format(message.author.name)
-                elif args[1] == 'removeswearexception':
-                    response = ': **.removeswearexception** {}'.format(message.author.name)
-                        
-                if message.author.id == '85702178525704192' or message.author.id == '227161120069124096' or message.author.id == '173324987665612802' or message.author.id == '172846477683458049':
-                    if args[1] == 'quit':
-                        response = ': **.quit** - Puts the bot into lockdown.'
-                    elif args[1] == 'restart':
-                        response = ': **.restart** - Restarts the bot. Can be done anywhere. If the bot is in lockdown, restart has to be done via private message.'  
-
-                if response != None:
-                    await client.send_message(message.channel, response)
-                elif response == None:
-                    await client.send_message(message.channel, 'Sorry {}, but no instance of that command was found.'.format(message.author.mention))
-                
-                    
-            
-        if message.content.startswith('.watch '): # WATCH
-            unknown_command = False
-            if admin:
-                msg = message.content[len('.watch '):]
-                args = msg.split(' ')
-                if len(args) > 0:
-                    if args[0] == 'add':
-                        if len(message.mentions) > 0:
-                            for member_mentions in message.mentions:
-                                if member_mentions.id != '399539809569472515' or member_mentions.id != '399777479423688705':
-                                    fury.execute("INSERT INTO watch VALUES (?, ?)", (message.server.id, member_mentions.id, ))
-                                    conn.commit()
-                                    await watch_logs(message.server, '**{} is now being watched!**'.format(member_mentions.mention))
-                    elif args[0] == 'remove':
-                        if len(message.mentions) > 0:
-                            for member_mentions in message.mentions:
-                                fury.execute("DELETE FROM watch WHERE serverid = ? AND userid = ?;", (message.server.id, member_mentions.id, ))
-                                conn.commit()
-                                await watch_logs(message.server, '**{} is no longer being watched!**'.format(member_mentions.mention))
+            await client.delete_message(message)    
+        elif args[0] == '.help':
+            bot = message.server.get_member(client.user.id)
+            top_role_color = bot.top_role.color
+            await client.delete_message(message)  
+            if len(args) > 1:
+                embed = None
+                response = ''
+                command = None
+                for command_list in fury.execute("SELECT number, command, description FROM commands WHERE command=? ORDER BY number ASC", (args[1], )):
+                    command = command_list[1]
+                    if command_list[0] > 0:
+                        response += f'{command_list[2]}\n'
+                            
+                if command != None:
+                    command = command.capitalize()
+                    response = response.replace('message.id', str(message.id))
+                    response = response.replace('message.author.id', str(message.author.id))
+                    response = response.replace('message.server.name', str(message.server.name))
+                    response = response.replace('message.author.mention', str(message.author.mention))
+                    response = response.replace('message.author', str(message.author))
+                                    
+                    embed = discord.Embed(color=0x9B59B6)
+                    embed.add_field(name=f'**{command} command:**', value=f'{response}', inline=False)
+                else:
+                    embed = discord.Embed(description=f'Sorry {message.author.mention}, but no instance of that command was found.', color=top_role_color)
+                    #embed.add_field(name=f'**{command} command:**', value=f'{response}', inline=False)
+                await client.send_message(message.channel, embed=embed)
+                            
+            else:
+                embed = discord.Embed(description=f'Here are the commands available to you *{message.author.mention}*:', color=top_role_color)
+                for command_list in fury.execute("SELECT command, description, access FROM commands WHERE number=0 ORDER BY count ASC"):
+                    command = command_list[0]
+                    description = command_list[1]
+                    if command_list[2] == 'admin':
+                        if admin:
+                            embed.add_field(name=f'**.{command}**', value=f' - {description}', inline=False)
+                    elif command_list[2] == 'muteMember':
+                        if muteMember:
+                            embed.add_field(name=f'**.{command}**', value=f' - {description}', inline=False)
                     else:
-                        await client.send_message(message.channel, 'Sorry {}, but the given argument does not currently exist!'.format(message.author.mention))
-                        
-        if message.content.startswith('.allow'): # ALLOW SWEARING
-            unknown_command = False
+                        embed.add_field(name=f'**.{command}**', value=f' - {description}', inline=False)
+
+                await client.send_message(message.channel, embed=embed)
+        elif args[0] == '.watch': # WATCH
+            if muteMember:
+                if len(args) > 1:
+                    msg = message.content[len(f'{args[0]} '):]
+                    args = msg.split(' ')
+                    if len(args) > 0:
+                        if args[0] == 'add':
+                            if len(message.mentions) > 0:
+                                for member_mentions in message.mentions:
+                                    if member_mentions.id != '399539809569472515' or member_mentions.id != '399777479423688705':
+                                        fury.execute("INSERT INTO watch VALUES (?, ?)", (message.server.id, member_mentions.id, ))
+                                        conn.commit()
+                                        await watch_logs(message.server, '**{} is now being watched!**'.format(member_mentions.mention))
+                        elif args[0] == 'remove':
+                            if len(message.mentions) > 0:
+                                for member_mentions in message.mentions:
+                                    fury.execute("DELETE FROM watch WHERE serverid = ? AND userid = ?;", (message.server.id, member_mentions.id, ))
+                                    conn.commit()
+                                    await watch_logs(message.server, '**{} is no longer being watched!**'.format(member_mentions.mention))
+                        else:
+                            await client.send_message(message.channel, 'Sorry {}, but the given argument does not currently exist!'.format(message.author.mention))
+            await client.delete_message(message)           
+        elif args[0] == '.allow': # ALLOW SWEARING
             if muteMember:
                 msg = message
                 ignore = False
@@ -1065,77 +1177,80 @@ async def on_message(message):
                         if url == None:
                             mem.execute("DELETE FROM bypass WHERE serverid = ? AND userid = ?;", (msg.server.id, members.id, ))
                             con.commit()
-                            
-        if message.content.startswith('.mention '): # MENTION USERS !!! MOST LIKELY HAS BUGS
-            unknown_command = False
+            await client.delete_message(message)
+        elif args[0] == '.mention': # MENTION USERS !!! MOST LIKELY HAS BUGS
             if muteMember:
-                msg = message.content[len('.mention '):]
-                args = msg.split(' ')
-                member_list = []
-                if len(args) > 0:
-                    if len(message.mentions) > 0:
-                            for member_mentions in message.mentions:
-                                member_list.append(member_mentions.mention)
-                                
-                    for members in args:
-                        member = message.server.get_member(members)
-                        if member != None:
-                            member_list.append(member.mention)
+                if len(args) > 1:
+                    msg = message.content[len(f'{args[0]} '):]
+                    args = msg.split(' ')
+                    member_list = []
+                    if len(args) > 0:
+                        if len(message.mentions) > 0:
+                                for member_mentions in message.mentions:
+                                    member_list.append(member_mentions.mention)
+                                    
+                        for members in args:
+                            member = message.server.get_member(members)
+                            if member != None:
+                                member_list.append(member.mention)
 
-                await client.send_message(message.channel, ' '.join(map(str, member_list)))
-                
-        
-        if message.content.startswith('.quit'): # QUIT
-            unknown_command = False
+                    await client.send_message(message.channel, ' '.join(map(str, member_list)))
+            await client.delete_message(message)        
+        elif args[0] == '.quit': # QUIT
             if message.author.id == '85702178525704192' or message.author.id == '227161120069124096' or message.author.id == '173324987665612802' or message.author.id == '172846477683458049':
                 await client.change_presence(status=discord.Status.do_not_disturb)
                 log(f'{tracers.colors.strong.red}> Failsafe Mode: {tracers.colors.strong.yellow}{client.user.name}, {tracers.colors.strong.cyan}{client.user.id}, {tracers.colors.strong.red}Failsafe Active.')
+                await client.delete_message(message)
                 failsafe = True
-        if message.content.startswith('.addswear '): # ADD SWEAR COMMAND
+        elif args[0] =='.addswear': # ADD SWEAR COMMAND
             if message.author.bot == False:
-                if admin:
-                    msg = message.content[len('.addswear '):]
-                    fury.execute("INSERT INTO swear VALUES (?,?)", (message.server.id, msg.lower(), ))
-                    conn.commit()
+                if perms(message):
+                    if len(args) > 1:
+                        msg = message.content[len(f'{args[0]} '):]
+                        fury.execute("INSERT INTO swear VALUES (?,?)", (message.server.id, msg.lower(), ))
+                        conn.commit()
                 else:
                     await permission_response(message)
-                unknown_command = False
-        if message.content.startswith('.removeswear '): # REMOVE SWEAR COMMAND
+            await client.delete_message(message)
+        elif args[0] =='.removeswear': # REMOVE SWEAR COMMAND
             if message.author.bot == False:
-                if admin:
-                    msg = message.content[len('.removeswear '):]
-                    fury.execute("DELETE FROM swear WHERE serverid = ? AND phrase = ?;", (message.server.id, msg.lower(), ))
-                    conn.commit()
+                if perms(message):
+                    if len(args) > 1:
+                        msg = message.content[len(f'{args[0]} '):]
+                        fury.execute("DELETE FROM swear WHERE serverid = ? AND phrase = ?;", (message.server.id, msg.lower(), ))
+                        conn.commit()
                 else:
                     await permission_response(message)
-                unknown_command = False
-        if message.content.startswith('.addswearexception '): # ADD SWEAR EXCEPTION COMMAND
+            await client.delete_message(message)
+        elif args[0] == '.addswearexception': # ADD SWEAR EXCEPTION COMMAND
             if message.author.bot == False:
-                if admin:
-                    msg = message.content[len('.addswearexception '):]
-                    fury.execute("INSERT INTO swearexception VALUES (?,?)", (message.server.id, msg.lower(), ))
-                    conn.commit()
+                if perms(message):
+                    if len(args) > 1:
+                        msg = message.content[len(f'{args[0]} '):]
+                        fury.execute("INSERT INTO swearexception VALUES (?,?)", (message.server.id, msg.lower(), ))
+                        conn.commit()
                 else:
                     await permission_response(message)
-                unknown_command = False
-        if message.content.startswith('.removeswearexception '): # REMOVE SWEAR EXCEPTION COMMAND
+            await client.delete_message(message)    
+        elif args[0] == '.removeswearexception': # REMOVE SWEAR EXCEPTION COMMAND
             if message.author.bot == False:
-                if admin:
-                    msg = message.content[len('.removeswearexception '):]
-                    fury.execute("DELETE FROM swearexception WHERE serverid = ? AND phrase = ?;", (message.server.id, msg.lower(), ))
-                    conn.commit()
+                if perms(message):
+                    if len(args) > 1:
+                        msg = message.content[len(f'{args[0]} '):]
+                        fury.execute("DELETE FROM swearexception WHERE serverid = ? AND phrase = ?;", (message.server.id, msg.lower(), ))
+                        conn.commit()
                 else:
                     await permission_response(message)
-                unknown_command = False
-        
-        if message.content.startswith('.say '): # SAY COMMAND
+            await client.delete_message(message)
+        elif args[0] == '.say': # SAY COMMAND
             if muteMember:
-                msg = message.content[len('.say '):]
-                await client.send_message(message.channel, msg)
+                if len(args) > 1:
+                    msg = message.content[len(f'{args[0]} '):]
+                    await client.send_message(message.channel, msg)
             else:
                 await permission_response(message)
-            unknown_command = False
-        if message.content.startswith('Vote'): # VOTE FUNCTION
+            await client.delete_message(message)
+        elif message.content.startswith('Vote'): # VOTE FUNCTION
             if muteMember:
                 def check(msg):
                     return msg.content.startswith('.vote') # VOTE FUNCTION SUBCOMMAND
@@ -1147,8 +1262,7 @@ async def on_message(message):
                     await client.add_reaction(message, u"\U0001F53D") # DOWN ARROW
             else:
                 await permission_response(message)
-            unknown_command = False
-        if message.content.startswith('Poll'): # POLL FUNCTION
+        elif message.content.startswith('Poll'): # POLL FUNCTION
             if muteMember:
                 def check(msg):
                     return msg.content.startswith('.poll ') # POLL FUNCTION SUBCOMMAND
@@ -1166,27 +1280,23 @@ async def on_message(message):
                     
             else:
                 await permission_response(message)
-            unknown_command = False
-        if message.content.startswith('.addreaction '): # POLL FUNCTION
+        elif args[0] == '.addreaction': # POLL FUNCTION
             if muteMember:
-                msg = message.content[len('.addreaction '):]
-                args = msg.split(' ')
                 selected_emoji = None
-                log(args[1])
                 for x in client.servers:
                     for y in x.emojis:
-                        if str(y) == args[1]:
+                        if str(y) == args[2]:
                             selected_emoji = y
-                selected_message = await client.get_message(message.channel, args[0])
+                selected_message = await client.get_message(message.channel, args[1])
                 if selected_emoji != None:
                     await client.add_reaction(selected_message, selected_emoji)
-            unknown_command = False
-        if message.content.startswith('.vote'): # vote void
-            unknown_command = False
-        if message.content.startswith('.poll'): # poll void
-            unknown_command = False
-        if message.content.startswith('.restart'): # RESTART COMMAND
-            if muteMember:
+            await client.delete_message(message)
+        elif args[0] == '.vote': # vote void
+            await client.delete_message(message)
+        elif args[0] == '.poll': # poll void
+            await client.delete_message(message)
+        elif args[0] == '.restart': # RESTART COMMAND
+            if message.author.id == '85702178525704192' or message.author.id == '227161120069124096' or message.author.id == '173324987665612802' or message.author.id == '172846477683458049':
                 msg = message.content[len('.restart'):]
                 await client.send_message(message.channel, '{} is restarting{}.'.format(client.user.name, msg))
                 log(f'{tracers.colors.strong.red}> Manual Restart: {tracers.colors.strong.yellow}{client.user.name}, {tracers.colors.strong.cyan}{client.user.id}, {tracers.colors.strong.magenta}Restarting.')
@@ -1194,23 +1304,35 @@ async def on_message(message):
                     await client.delete_message(message)
                 except discord.errors.Forbidden:
                     pass
-                unknown_command = False
+                
                 await client.close()
-            else:
-                await permission_response(message)
-                unknown_command = False
-        if message.content.startswith('.members'): # MEMBERS COMMAND
+
+        elif args[0] == '.members': # MEMBERS COMMAND
             await client.send_message(message.channel, 'I am currently defending the {} members that are in this guild.'.format(message.server.member_count))
-            unknown_command = False
-        if message.content.startswith('.servers'): # SERVER COMMAND
+            await client.delete_message(message)
+            
+        elif args[0] == '.servers': # SERVER COMMAND
             await client.send_message(message.channel, 'I am currently defending {} guilds.'.format(len(client.servers)))
-            unknown_command = False
+            await client.delete_message(message)
+            
+        else: # UNKNOW COMMAND
+            com_name = list(args[0])
+            if len(com_name) > 0:
+                if com_name[0] == '.' and len(com_name) > 1:
+                    import re
+                    if re.match(r'[a-zA-Z]', com_name[1]):
+                        await client.send_message(message.channel, f'Sorry {message.author.mention}, but the given command does not currently exist!')
+                        await client.delete_message(message)
             
         swearEvent = False
         if admin == False and message.author.bot == False and muteMember == False: # START OF SWEAR PROTECTION
         #if message.author.bot == False: # START OF SWEAR PROTECTION
-            offenceTime, swears = await swear_filter(message.server.id, message.content, message.author.id, message)
+            offenceTime, swears = await swear_filter(message.server.id, make_printable(message.content), message.author.id, message)
             if offenceTime > 0:
+                try:
+                    await client.delete_message(message)
+                except discord.errors.Forbidden:
+                    pass
                 swearEvent = True
                 if offenceTime >= 3:
                     member = message.server.get_member('344569392572530690') # ECHO
@@ -1223,48 +1345,21 @@ async def on_message(message):
 
         #if muteMember == False and message.author.bot == False: # START OF SPAM PROTECTION
 
-        if unknown_command == True and message.content.startswith('..') == False:
-            await client.send_message(message.channel, 'Sorry {}, but the given command does not currently exist!'.format(message.author.mention))
-
-        if message.content.startswith('.'):
-            if ignore:
-                blakn = True
-            elif message.content.startswith('.restart'):
-                if muteMember == False:
-                    try:
-                        await client.delete_message(message)
-                    except discord.errors.Forbidden:
-                        pass
-            elif message.content.startswith('.internal'):
-                blakn = True
-            elif message.content.startswith('.log'):
-                blakn = True
-            elif message.content.startswith('..'):
-               blakn = True
-            else:
-                try:
-                    await client.delete_message(message)
-                except discord.errors.Forbidden:
-                    pass
-        elif swearEvent:
-            try:
-                await client.delete_message(message)
-            except discord.errors.Forbidden:
-                pass
-
 # START
+from functions import logger, json
 try:
-    client.run(json_reader('login')) # private
+    logger.log(f'{tracers.colors.cyan}> Attempting Login.')
+    client.run(json.reader('login')) # private
 except discord.errors.LoginFailure as e:
     import os.path
-    exists = os.path.isfile(file)
+    exists = os.path.isfile(json.file)
     if exists:
         try:
-            os.remove(file)
+            os.remove(json.file)
         except OSError:
             pass
-    log('discord.errors.LoginFailure has occured. Please check your login token')
-    log('SESSION HAS BEEN TERMINATED')
+    logger.log('discord.errors.LoginFailure has occured. Please check your login token')
+    logger.log('SESSION HAS BEEN TERMINATED')
     client.close()
 
 
