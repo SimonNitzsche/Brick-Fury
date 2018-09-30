@@ -4,9 +4,16 @@
 #    |    |   \ |  | \/  \  \___|    <   |     \ |  |  /|  | \/\___  |
 #    |______  / |__|  |__|\___  >__|_ \  \___  / |____/ |__|   / ____|
 #           \/                \/     \/      \/                \/     
+# 
+#   Developed by Wesley J. B. (Tracer#2561)
+#   Contributions by: Raine Bannister
+#   Exploits uncovered by: Members of the LUCH Discord Server
+#
+#   This bot is used and hosted by me (Wesley), for others to use.
 
 import discord
 from discord.ext import commands
+import asyncio
 import sqlite3
 import time
 import pytesseract
@@ -70,8 +77,6 @@ logging.execute('''CREATE TABLE IF NOT EXISTS replace
              (find text, replacement text)''')
 
 client = discord.Client()
-players={}
-voices={}
 #appinfo = discord.AppInfo()
 #client.change_presence(status=dnd)
 failsafe = False
@@ -81,7 +86,7 @@ file = 'settings.json'
 def log(text):
     import time
     time_log = time.strftime("%X", time.localtime(time.time()))
-    print(f'{tracers.colors.strong.green}[{time_log}] {text}{tracers.colors.reset}')
+    print(f'{tracers.colors.strong.green}[{time_log}] {text}{tracers.colors.alert}')
 
 async def swear_filter(serverid, message, userid, message_data):
     global bypass
@@ -102,7 +107,7 @@ async def swear_filter(serverid, message, userid, message_data):
             message += '\n'
             message += '\n'
             message += text
-
+            
             from functions import json
             try:
                 log_server = client.get_server(json.reader('main_server'))
@@ -208,6 +213,8 @@ async def audit(server, user, action, data):
             #user = after, data = before
             if user.nick != data.nick:
                 await client.send_message(channel, '[{}] [NICK] {} to {}'.format(user.mention, data.nick, user.nick))
+            if user.name != data.name:
+                await client.send_message(channel, '[{}] [NAME] {} to {}'.format(user.mention, data.name, user.name))
             #if user.game != data.game:
             #    await client.send_message(channel, '[{}] [GAME] {} to {}'.format(user.mention, data.game, user.game))
             #if user.avatar != data.avatar:
@@ -276,7 +283,7 @@ async def watch(server, user, action, data):
                 url = attachment_info['url']
             content = data.content
             for members in data.mentions:
-                content = content.replace(members.mention, 'f@{members.name}#{members.discriminator}')
+                content = content.replace(members.mention, f'@{members.name}#{members.discriminator}')
             content = content.replace('@everyone', '@​everyone')
             content = content.replace('@here', '@​here')
             if url == None:
@@ -293,7 +300,7 @@ async def watch(server, user, action, data):
                 url = attachment_info['url']
             content = data.content
             for members in data.mentions:
-                content = content.replace(members.mention, 'f@{members.name}#{members.discriminator}')
+                content = content.replace(members.mention, f'@{members.name}#{members.discriminator}')
             content = content.replace('@everyone', '@​everyone')
             content = content.replace('@here', '@​here')
             if url == None:
@@ -328,6 +335,19 @@ async def watch(server, user, action, data):
             
         elif action == 'on_member_unban':
             await client.send_message(channel, '[{}#{}] [USER UNBANNED]'.format(user.name, user.discriminator))
+
+def perm_calc(channel):
+    member = channel.server.get_member(client.user.id)
+    if str(channel.type) == 'text':
+        readMessages = member.permissions_in(channel).read_messages
+        readMessageHistory = member.permissions_in(channel).read_message_history
+        sendMessages = member.permissions_in(channel).send_messages
+        if readMessages == True and readMessageHistory == True and sendMessages == True:
+            return True
+        else:
+            return False
+    else:
+        return False
 
 def make_printable(text):
     text_list = list(text)
@@ -367,25 +387,47 @@ async def status_update():
         json.update('type', '0')
     await client.change_presence(game=discord.Game(name=ngame, type=int(json.reader('type')), url=nurl), status=json.reader('status'))
 
+@asyncio.coroutine
+async def proto():
+    while True:
+        await client.change_presence(game=discord.Game(name='LEGO Universe', type=0))
+        await asyncio.sleep(6.5)
+        users = 0
+        for x in client.servers:
+            users += x.member_count
+        await client.change_presence(game=discord.Game(name=f'{users} users', type=3))
+        await asyncio.sleep(6.5)
+        await client.change_presence(game=discord.Game(name=f'{len(client.servers)} servers', type=2))
+        await asyncio.sleep(6.5)
+
 @client.event
 async def on_ready():
     from functions import json
     log(f'{tracers.colors.cyan}> Logged in: {tracers.colors.strong.yellow}{client.user.name}, {tracers.colors.strong.cyan}{client.user.id}, {tracers.colors.strong.magenta}Initiated.')
 
-    for x in range(100):
-        try:
-            await status_update()
-            break
-        except ValueError as err:
-            if err.args[1] == 'game':
-                json.write('game', 'LEGO Universe')
-            elif err.args[1] == 'type':
-                json.write('type', '0')
-            elif err.args[1] == 'url':
-                json.write('url', 'None')
-            elif err.args[1] == 'status':
-                json.write('status', 'online')
+    for x in client.servers:
+        state.queue_names[x.id]=[]
+        state.queue_list[x.id]=[]
+        #state.voices[x.id]=None
+        state.loop[x.id]=False
+        state.volume[x.id]=1
 
+    await proto()
+
+    
+    #for x in range(100):
+    #    try:
+    #        await status_update()
+    #        break
+    #    except ValueError as err:
+    #        if err.args[1] == 'game':
+    #            json.write('game', 'LEGO Universe')
+    #        elif err.args[1] == 'type':
+    #            json.write('type', '0')
+    #        elif err.args[1] == 'url':
+    #            json.write('url', 'None')
+    #        elif err.args[1] == 'status':
+    #            json.write('status', 'online')
 
 #@client.event
 #async def on_member_join(member):
@@ -520,7 +562,7 @@ async def on_message_edit(message_before, message):
                         url = attachment_info['url']
                     content = message.content
                     for members in message.mentions:
-                        content = content.replace(members.mention, 'f@{members.name}#{members.discriminator}')
+                        content = content.replace(members.mention, f'@{members.name}#{members.discriminator}')
                     content = content.replace('@everyone', '@​everyone')
                     content = content.replace('@here', '@​here')
                     if url == None:
@@ -638,6 +680,15 @@ def perms(message):
         else:
             return True
 
+
+@client.event
+async def on_member_join(member):
+    if 'discord.gg' in member.name:
+        try:
+            await client.ban(member, delete_message_days=1)
+        except discord.errors.Forbidden:
+            pass
+
 @client.event
 async def on_message(message):
     global failsafe
@@ -658,7 +709,7 @@ async def on_message(message):
                         url = attachment_info['url']
                     content = message.content
                     for members in message.mentions:
-                        content = content.replace(members.mention, 'f@{members.name}#{members.discriminator}')
+                        content = content.replace(members.mention, f'@{members.name}#{members.discriminator}')
                     content = content.replace('@everyone', '@​everyone')
                     content = content.replace('@here', '@​here')
                     if url == None:
@@ -750,6 +801,8 @@ async def on_message(message):
                 msg = await client.send_message(message.channel, 'Pong!')                
                 ping = round((time.monotonic() - before) * 1000)
                 await client.edit_message(msg, f'Pong! `{ping}ms`')
+        else:
+            await permission_response(message)
 
 
     if message.server != None and failsafe == False: # SERVER MESSAGES
@@ -780,10 +833,97 @@ async def on_message(message):
 
 
         elif args[0] == '.embed':
-            if muteMember:
-                blank = True
+            appinfo = await client.application_info()
+            if appinfo.owner.id == message.author.id:
+                bot = message.server.get_member(client.user.id)
+                top_role_color = bot.top_role.color
+                embed = discord.Embed(description=f'Okay {message.author.mention}, here is the embed you requested!', color=top_role_color)
+                await client.send_message(message.channel, embed=embed)
             else:
                 await permission_response(message)
+
+        elif args[0] == '.broadcast':
+            appinfo = await client.application_info()
+            if appinfo.owner.id == message.author.id:
+                bot = message.server.get_member(client.user.id)
+                top_role_color = bot.top_role.color
+                msg = message.content[len(f'{args[0]} '):]
+                embed = discord.Embed(title=f'Message from {message.author.name}, owner of Brick Fury:', description=f'{msg}', color=top_role_color)
+                #await client.send_message(message.channel, embed=embed)
+                #log(message.server.default_channel.name)
+                counter = 0
+                for x in client.servers:
+                    if x.default_channel != None and perm_calc(x.default_channel) == True:
+                        await client.send_message(x.default_channel, embed=embed)
+                    else:
+                        try:
+                            good = False
+                            for y in x.channels:
+                                if perm_calc(y):
+                                    await client.send_message(y, embed=embed)
+                                    #log('sent')
+                                    counter += 1
+                                    good = True
+                                    break
+                            if good == False:
+                                log(f'Failed to send broadcast to {x.name}')
+                        except discord.errors.Forbidden:
+                            log(f'Failed to send broadcast to {x.name}')
+                
+                await client.send_message(message.channel, f'Sent broadcast to {counter}/{len(client.servers)}')
+                
+            try:
+                await client.delete_message(message)
+            except discord.errors.Forbidden:
+                pass
+
+        elif args[0] == '.mail':
+            appinfo = await client.application_info()
+            if appinfo.owner.id == message.author.id:
+                if args[1] == 'send':
+                    bot = message.server.get_member(client.user.id)
+                    top_role_color = bot.top_role.color
+                    msg = message.content[len(f'{args[0]} {args[1]} {args[2]} {args[3]} '):]
+                    embed = discord.Embed(title=f'Message from {message.author.name}, owner of Brick Fury:', description=f'{msg}', color=top_role_color)
+                    server = client.get_server(args[2])
+                    channel = client.get_channel(args[3])
+                        
+                    try:
+                        await client.send_message(channel, embed=embed)
+                        await client.send_message(message.channel, f'Sent broadcast to {server.name} in {channel.name}')
+                    except discord.errors.Forbidden:
+                        log(f'Failed to send broadcast to {server.name}')
+                    except discord.errors.InvalidArgument:
+                        log(f'Failed to send broadcast to {server.name}')
+                        
+                elif args[1] == 'list':
+                    if args[2] == 'servers':
+                        for x in client.servers:
+                            log(f'{x.name} | {x.id}')
+                    elif args[2] == 'channels':
+                        if is_number(args[3]):
+                            server = client.get_server(args[3])
+                            for x in server.channels:
+                                if perm_calc(x):
+                                    if str(x.type) == 'text':
+                                        log(f'{x.name} | {x.id}')
+
+                    elif args[2] == 'invites':
+                        try:
+                            server = client.get_server(args[3])
+                            channel = None
+                            for x in server.channels:
+                                if str(x.type) == 'text':
+                                    invite = await client.create_invite(x, max_uses=1)
+                                    log(invite.code)
+                                    break
+                        except discord.errors.Forbidden:
+                            log(f'Failed to create invite.')
+                
+            try:
+                await client.delete_message(message)
+            except discord.errors.Forbidden:
+                pass
 
         elif args[0] == '.perm':
             #if perms(message):
@@ -819,7 +959,7 @@ async def on_message(message):
             if muteMember:
                 if len(args) > 1:
                     if is_number(args[1]):
-                        if int(args[1]) < 500:
+                        if int(args[1]) <= 500:
                             try:
                                 await client.purge_from(message.channel, limit=int(args[1]))
                                 await client.send_message(message.channel, f'Purged {args[1]} messages.')
@@ -854,43 +994,62 @@ async def on_message(message):
                         await permission_response(message)
                 elif args[1] == 'list':
                     if muteMember:
+                        import ast
                         users = None
                         name = None
                         for user_list in fury.execute("SELECT users, name FROM rsvp WHERE serverid =? AND channelid =? ORDER BY timestamp DESC", (message.server.id, message.channel.id, )):
-                            users = user_list[0]
+                            if user_list[0] != None:
+                                users = ast.literal_eval(user_list[0])
+                            else:
+                                users = []
                             name = user_list[1]
                             break
-                        if users != None:
+                        if users != None and str(users) != '[]':
                             await client.send_message(message.channel, 'The following users have entered into the {} RSVP:'.format(name))
-                            uargs = users.split(',')
                             ulist = ''
-                            for x in range(len(uargs)):
-                                member = message.server.get_member('{}'.format(uargs[x]))
-                                if x == (len(uargs) - 1):
+                            for x in range(len(users)):
+                                member = message.server.get_member('{}'.format(users[x]))
+                                if len(users) == 1:
+                                    ulist += '{}.'.format(member.mention)
+                                elif x == (len(users)-1):
                                     ulist += 'and {}.'.format(member.mention)
                                 else: 
-                                    ulist += '{}, .'.format(member.mention)
+                                    ulist += '{}, '.format(member.mention)
+                            await client.send_message(message.channel, '{}'.format(ulist))
+                        elif name != None:
+                            await client.send_message(message.channel, 'The {} RSVP is empty.'.format(name))
+            else:
+                import ast
+                enabled = None
                 for user_list in fury.execute("SELECT users, name, enabled FROM rsvp WHERE serverid =? AND channelid =? ORDER BY timestamp DESC", (message.server.id, message.channel.id, )):
                     enabled = user_list[2]
-                    users = user_list[0]
+                    if user_list[0] != None:
+                        users = ast.literal_eval(user_list[0])
+                    else:
+                        users = []
                     name = user_list[1]
                     break
-                ulist = ''
+                
                 entered = None
                 if enabled == True:
                     if users != None:
-                        uargs = users.split(',')
-                        for x in range(len(uargs)):
-                            if uargs[x] == message.author.id:
+                        for x in range(len(users)):
+                            if users[x] == message.author.id:
                                 entered = True
-                            ulist += '{},'.format(uargs[x])
+                                #users.append(message.author.id)
                     if entered == None:
                         if name != None:
-                            ulist += '{}'.format(message.author.id)
-                            fury.execute("UPDATE rsvp SET users = ? WHERE serverid = ? AND channelid = ? AND name = ?", (ulist, message.server.id, message.channel.id, name, ))
+                            users.append(message.author.id)
+                            fury.execute("UPDATE rsvp SET users = ? WHERE serverid = ? AND channelid = ? AND name = ?", (str(users), message.server.id, message.channel.id, name, ))
                             conn.commit()
                             await client.send_message(message.channel, '{} responded to the {} RSVP.'.format(message.author.mention, name))
-                else:
+                    elif entered == True:
+                        if name != None:
+                            users.remove(message.author.id)
+                            fury.execute("UPDATE rsvp SET users = ? WHERE serverid = ? AND channelid = ? AND name = ?", (str(users), message.server.id, message.channel.id, name, ))
+                            conn.commit()
+                            await client.send_message(message.channel, '{} declined the {} RSVP.'.format(message.author.mention, name))
+                elif enabled == False:
                     await client.send_message(message.channel, 'Sorry {}, but the {} RSVP is currently closed.'.format(message.author.mention, name))
                 
 
@@ -1056,7 +1215,7 @@ async def on_message(message):
             blank = True
 
         elif message.content.startswith('.log'):
-            blank = True
+            log(message.content)
 
         elif args[0] == '.ping':
             await client.delete_message(message)
@@ -1078,12 +1237,7 @@ async def on_message(message):
         #                            fury.execute("INSERT INTO watch VALUES (?, ?)", (message.server.id, member_mentions.id, ))
         #                            conn.commit()
         #                            await watch_logs(message.server, '**{} is now being watched!**'.format(member_mentions.mention))
-            
-
-
-        elif args[0] == 'updates':
-            await client.send_message(message.channel, 'Tracer is currently writing a new permission based system for commands!')
-            await client.delete_message(message)    
+        
         elif args[0] == '.help':
             bot = message.server.get_member(client.user.id)
             top_role_color = bot.top_role.color
@@ -1105,7 +1259,7 @@ async def on_message(message):
                     response = response.replace('message.author.mention', str(message.author.mention))
                     response = response.replace('message.author', str(message.author))
                                     
-                    embed = discord.Embed(color=0x9B59B6)
+                    embed = discord.Embed(color=top_role_color)
                     embed.add_field(name=f'**{command} command:**', value=f'{response}', inline=False)
                 else:
                     embed = discord.Embed(description=f'Sorry {message.author.mention}, but no instance of that command was found.', color=top_role_color)
@@ -1139,6 +1293,7 @@ async def on_message(message):
                                     if member_mentions.id != '399539809569472515' or member_mentions.id != '399777479423688705':
                                         fury.execute("INSERT INTO watch VALUES (?, ?)", (message.server.id, member_mentions.id, ))
                                         conn.commit()
+                                        msg = message.content[len(f'{args[0]} '):]
                                         await watch_logs(message.server, '**{} is now being watched!**'.format(member_mentions.mention))
                         elif args[0] == 'remove':
                             if len(message.mentions) > 0:
@@ -1260,8 +1415,7 @@ async def on_message(message):
                 if msg != None:
                     await client.add_reaction(message, u"\U0001F53C") # UP ARROW
                     await client.add_reaction(message, u"\U0001F53D") # DOWN ARROW
-            else:
-                await permission_response(message)
+
         elif message.content.startswith('Poll'): # POLL FUNCTION
             if muteMember:
                 def check(msg):
@@ -1277,9 +1431,7 @@ async def on_message(message):
                         options = base + x
                         indicator = chr(options)
                         await client.add_reaction(message, indicator) # REGIONAL INDICATORS
-                    
-            else:
-                await permission_response(message)
+
         elif args[0] == '.addreaction': # POLL FUNCTION
             if muteMember:
                 selected_emoji = None
@@ -1314,6 +1466,112 @@ async def on_message(message):
         elif args[0] == '.servers': # SERVER COMMAND
             await client.send_message(message.channel, 'I am currently defending {} guilds.'.format(len(client.servers)))
             await client.delete_message(message)
+
+
+        elif args[0] == '.testlog':
+            log(message.server.id)
+            log(state.loop)
+            log(state.queue_list)
+            log(state.queue_names)
+            log(state.players)
+            log(state.voices)
+            log(state.working)
+
+        elif args[0] == '.player': # MUSIC CONTROLLER COMMAND
+            # Music bots can be pretty complicated when using the default youtube-dl built in with discord.py
+            # This is my attempt at it.
+            await client.delete_message(message)
+            if True == True:
+                import youtube_dl
+                if len(args) > 1:
+                    #if args[1] == 'stop':
+                    #    players[message.server.id].stop()
+                    #    await client.send_message(message.channel, f'Stopped **{players[message.server.id].title}**')
+                    if args[1] == 'pause':
+                        try:
+                            voice = state.voices[message.server.id]
+                            if voice.is_connected():
+                                if state.players[message.server.id].is_playing():
+                                    state.players[message.server.id].pause()
+                                    await client.send_message(message.channel, f'Paused **{state.players[message.server.id].title}**')
+                        except KeyError:
+                            pass
+                    elif args[1] == 'resume':
+                        try:
+                            voice = state.voices[message.server.id]
+                            if voice.is_connected():
+                                if state.players[message.server.id].is_playing() == False and state.players[message.server.id].is_done() == False:
+                                    state.players[message.server.id].resume()
+                                    await client.send_message(message.channel, f'Resumed **{state.players[message.server.id].title}**')
+                        except KeyError:
+                            pass
+                    elif args[1] == 'disconnect':
+                        try:
+                            voice = state.voices[message.server.id]
+                            if voice.is_connected():
+                                state.queue_list[message.server.id].clear()
+                                state.queue_names[message.server.id].clear()
+                                state.players[message.server.id].stop()
+                                #voice = await client.join_voice_channel(message.author.voice.voice_channel)
+                                await voice.disconnect()
+                                state.loop[message.server.id] = False
+                                #state.players = {}
+                                state.voices[message.server.id] = []
+                                await client.send_message(message.channel, f'Disconnected bot from voice channel.')
+                        except KeyError:
+                            await client.send_message(message.channel, f'Bot is not connected')
+                    elif args[1] == 'volume':
+                        try:
+                            voice = state.voices[message.server.id]
+                            if voice.is_connected():
+                                state.players[message.server.id].volume = float(args[2])
+                                state.volume[message.server.id] = float(args[2])
+                        except KeyError:
+                            log(f'{tracers.colors.alert}VOLUME KEYERROR')
+                    elif args[1] == 'queue':
+                        response = ''
+                        current = state.players[message.server.id].title
+                        response += f'\n>[1] - **{current}**'
+                        num = 0
+                        for x in range(len(state.queue_names[message.server.id])):
+                            num = x + 2
+                            if num <= 10:
+                                response += f'\n[{num}] - **{state.queue_names[message.server.id][x]}**'
+                        if num > 10:
+                            dif = num - 10
+                            if dif == 1:
+                                response += f'\nPlus {dif} other video.'
+                            else:
+                                response += f'\nPlus {dif} other videos.'
+                        #log(response)
+                        await client.send_message(message.channel, f'Current queue: {response}')
+                        #log(queue_list)
+                    elif args[1] == 'skip':
+                        if message.author.voice.voice_channel:
+                            state.players[message.server.id].stop()
+                            await client.send_message(message.channel, f'Skipped **{state.players[message.server.id].title}**')
+                        else:
+                            await client.send_message(message.channel, f'You are not in a voice channel {message.author.mention}')
+                    else:
+                        try:
+                            try:
+                                if state.players[message.server.id].is_playing():
+                                    if state.loop[message.server.id] == False:
+                                        state.players[message.server.id].stop()
+                                        await client.send_message(message.channel, f'Stopped **{state.players[message.server.id].title}**')
+                            except KeyError:
+                                pass
+                            try:
+                                if str(state.voices[message.server.id]) == '[]':
+                                #log('voices')
+                                    voice = await client.join_voice_channel(message.author.voice.voice_channel)
+                                    state.voices[message.server.id] = voice
+                            except KeyError:
+                                voice = await client.join_voice_channel(message.author.voice.voice_channel)
+                                state.voices[message.server.id] = voice
+                        except discord.errors.ClientException:
+                            voice = state.voices[message.server.id]
+                        await music('new', message)
             
         else: # UNKNOW COMMAND
             com_name = list(args[0])
@@ -1343,26 +1601,139 @@ async def on_message(message):
                     await client.send_message(censor_channel, '{} swore in {}, said {}totalling in {} offences.'.format(message.author.mention, message.channel.mention, swears, offenceTime))
 
 
-        #if muteMember == False and message.author.bot == False: # START OF SPAM PROTECTION
+class state:
+    loop={}
+    queue_list={}
+    queue_names={}
+    players={}
+    voices={}
+    working={}
+    volume={}
+@asyncio.coroutine
+async def music(type, message):    
+    import youtube_dl
+    import functools
+    import itertools
+    args = message.content.split()
+    #await client.send_message(message.channel, f'Attempting to download video.')
+    if type == 'new':
+        state.working[message.server.id] = True
+        #await client.send_message(message.channel, f'Attempting to add video to queue.')
+        from functools import partial
+        loop = asyncio.get_event_loop()
+        
+        ydl_options = {
+            'default_search': 'auto',
+            'format': 'bestaudio/best',
+            'ignoreerrors': True,
+            'source_address': '0.0.0.0', # Make all connections via IPv4
+            'nocheckcertificate': True,
+            'restrictfilenames': True,
+            'logtostderr': False,
+            'no_warnings': True,
+            'quiet': True,
+            'outtmpl': '%(extractor)s-%(id)s-%(title)s.%(ext)s',
+            'noplaylist': True
+        }
+        ytdl = youtube_dl.YoutubeDL(ydl_options)
+        partial = functools.partial(ytdl.extract_info, args[1], download=False, process=False)
+        result = await loop.run_in_executor(None, partial)
+
+        #log(result)
+        if 'entries' in result:
+            count = 0
+            for x in result['entries']:
+                webpage_url = f"https://www.youtube.com/watch?v={x['url']}"
+                state.queue_list[message.server.id].append(webpage_url)
+                state.queue_names[message.server.id].append(x['title'])
+                if count == 1000:
+                    break
+                count += 1
+            playlist = result['title']
+            await client.send_message(message.channel, f'Added **{count}** videos from playlist **{playlist}** to the queue.')
+            
+                    
+        else:
+            result = ytdl.extract_info(args[1], download=False)
+            state.queue_list[message.server.id].append(result['webpage_url'])
+            state.queue_names[message.server.id].append(result['title'])
+            await client.send_message(message.channel, f'Added **{state.queue_names[message.server.id][-1]}** to the queue.')
+
+          
+
+        state.working[message.server.id] = False
+
+    if len(state.queue_list[message.server.id]) > 0 and state.working[message.server.id] == False:
+        if state.loop[message.server.id] == False:
+            player = await state.voices[message.server.id].create_ytdl_player(state.queue_list[message.server.id].pop(0))
+            state.queue_names[message.server.id].pop(0)
+            player.volume = state.volume[message.server.id]
+            state.players[message.server.id] = player
+            player.start()
+            await client.send_message(message.channel, f'Started playing **{player.title}**')
+            state.loop[message.server.id] = True
+            while state.loop[message.server.id] == True:
+                await asyncio.sleep(5)
+                if state.players[message.server.id].is_done():
+                    state.loop[message.server.id] = False
+                    await music('queue', message)
+                    break
+    else:
+        await client.send_message(message.channel, f'The queue is empty. Disconnecting from voice channel.')
+        voice = state.voices[message.server.id]
+        if voice.is_connected():
+            state.queue_list[message.server.id].clear()
+            state.queue_names[message.server.id].clear()
+            state.players[message.server.id].stop()
+            #voice = await client.join_voice_channel(message.author.voice.voice_channel)
+            await voice.disconnect()
+            state.loop[message.server.id] = False
+            #state.players = {}
+            state.voices[message.server.id] = []
+            
+                
+def online():
+    try:
+        import httplib
+    except:
+        import http.client as httplib
+        
+    conn = httplib.HTTPConnection("www.google.com", timeout=5)
+    try:
+        conn.request("HEAD", "/")
+        conn.close()
+        return True
+    except:
+        conn.close()
+        return False
+    
 
 # START
 from functions import logger, json
-try:
-    logger.log(f'{tracers.colors.cyan}> Attempting Login.')
-    client.run(json.reader('login')) # private
-except discord.errors.LoginFailure as e:
-    import os.path
-    exists = os.path.isfile(json.file)
-    if exists:
-        try:
-            os.remove(json.file)
-        except OSError:
-            pass
-    logger.log('discord.errors.LoginFailure has occured. Please check your login token')
-    logger.log('SESSION HAS BEEN TERMINATED')
-    client.close()
+if online():
+    try:
+        logger.log(f'{tracers.colors.cyan}> Attempting Login.')
+        client.run(json.reader('login')) # private
+    except discord.errors.LoginFailure as e:
+        import os.path
+        exists = os.path.isfile(json.file)
+        if exists:
+            try:
+                os.remove(json.file)
+            except OSError:
+                pass
+        logger.log('discord.errors.LoginFailure has occured. Please check your login token')
+        logger.log('SESSION HAS BEEN TERMINATED')
+        client.close()
 
-
+# discordapp.com:443
+    except Exception as e:
+        args = str(e).split(' ')
+        if args[0] == '[Errno':
+            if args[1] == '11001]':
+                logger.log(f'{tracers.colors.alert}aiohttp.errors.ClientOSError has occured. {tracers.colors.generic}Please check your internet connection')
+else:
+    logger.log(f'{tracers.colors.alert}> No Internet Connection')
 
 
 

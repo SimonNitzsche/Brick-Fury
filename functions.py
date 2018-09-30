@@ -2,7 +2,7 @@ class logger:
     def log(text):
         import time
         time_log = time.strftime("%X", time.localtime(time.time()))
-        print(f'{tracers.colors.strong.green}[{time_log}] {text}{tracers.colors.reset}')
+        print(f'{tracers.colors.strong.green}[{time_log}] {text}{tracers.colors.alert}')
 
 #class permissions:
    
