@@ -293,6 +293,8 @@ async def watch(server, user, action, data):
            
         elif action == 'message_edit': # MESSAGE EDIT
             url = None
+            if client.user.bot:
+                return
             for attach in data.attachments:
                 str_attach = str(attach)
                 attach_replace = str_attach.replace('\'', '"')
